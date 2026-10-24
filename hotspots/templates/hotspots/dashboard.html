@@ -1,0 +1,109 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VanDrishti | Forest Monitoring</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f7f2;
+            color: #203329;
+        }
+
+        header {
+            background: #183c2b;
+            color: white;
+            padding: 22px 7%;
+        }
+
+        header h1 { margin: 0 0 8px; }
+        header p { margin: 0; color: #d6e6d9; }
+
+        main {
+            max-width: 1150px;
+            margin: 35px auto;
+            padding: 0 22px;
+        }
+
+        .intro {
+            background: white;
+            padding: 28px;
+            border-radius: 14px;
+            border: 1px solid #dce5dc;
+        }
+
+        .intro h2 { margin-top: 0; }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+            margin-top: 22px;
+        }
+
+        .card {
+            background: white;
+            padding: 22px;
+            border: 1px solid #dce5dc;
+            border-radius: 12px;
+        }
+
+        .card h3 { margin-top: 0; }
+        .status { color: #647568; font-size: 14px; }
+
+        footer {
+            padding: 25px;
+            text-align: center;
+            color: #647568;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🌲 VanDrishti</h1>
+        <p>Detect Early. Prioritise Smarter. Protect Forests.</p>
+    </header>
+
+    <main>
+        <section class="intro">
+            <h2>Forest Fire Monitoring Dashboard</h2>
+            <p>
+                A satellite-data-driven monitoring and response
+                prioritisation prototype for Nainital, Uttarakhand.
+            </p>
+            <p><strong>Development status:</strong> Initial dashboard</p>
+        </section>
+
+        <section class="cards">
+            <article class="card">
+                <h3>Satellite Observations</h3>
+                <p class="status">Data source integration pending</p>
+            </article>
+
+            <article class="card">
+                <h3>Priority Assessment</h3>
+                <p class="status">Scoring system not implemented yet</p>
+            </article>
+
+            <article class="card">
+                <h3>Interactive Map</h3>
+                <p class="status">Map integration pending</p>
+            </article>
+
+            <article class="card">
+                <h3>Response Cases</h3>
+                <p class="status">Case management not implemented yet</p>
+            </article>
+        </section>
+    </main>
+
+    <footer>
+        VanDrishti · Software prototype · Nainital, Uttarakhand
+    </footer>
+</body>
+</html>
