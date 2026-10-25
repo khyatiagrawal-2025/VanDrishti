@@ -230,9 +230,9 @@
                         <i class="bi bi-arrows-fullscreen me-1"></i>Reset View
                     </button>
                     <div class="btn-group btn-group-sm" role="group" aria-label="Map Basemap Switcher">
-                        <button type="button" class="btn btn-outline-secondary active" id="btnLayerVoyager" title="Clean Street Map">Voyager</button>
+                        <button type="button" class="btn btn-outline-secondary active" id="btnLayerOSM" title="OpenStreetMap Road &amp; Settlement Map">Streets (OSM)</button>
                         <button type="button" class="btn btn-outline-secondary" id="btnLayerTopo" title="Topographic Elevation Map">Topo</button>
-                        <button type="button" class="btn btn-outline-secondary" id="btnLayerOSM" title="OpenStreetMap">OSM</button>
+                        <button type="button" class="btn btn-outline-secondary" id="btnLayerVoyager" title="Satellite Aerial Imagery">Satellite</button>
                     </div>
                 </div>
             </div>
@@ -275,14 +275,23 @@
                     </div>
                 </div>
 
-                <!-- Empty State Overlay on Map -->
+                <!-- Basemap Tile Error Notification Banner (Unobtrusive) -->
+                <div class="vd-tile-error-banner d-none" id="mapTileErrorBanner" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <span id="mapTileErrorText">Basemap tiles could not be loaded. Please check your network connection.</span>
+                    <button type="button" class="btn btn-sm btn-outline-light ms-2 py-0 px-2" id="btnSwitchBackupLayer">Switch Layer</button>
+                </div>
+
+                <!-- Empty State Overlay on Map (Non-blocking floating notification) -->
                 <div class="vd-map-empty-overlay {% if total_observations > 0 %}d-none{% endif %}" id="mapEmptyOverlay">
                     <div class="vd-empty-box">
                         <div class="vd-empty-icon"><i class="bi bi-shield-check"></i></div>
-                        <h5>No Active Thermal Anomalies</h5>
-                        <p class="text-muted small mb-0" id="mapEmptyMessage">
-                            Zero high-radiance thermal signatures currently displayed for Nainital Forest Division.
-                        </p>
+                        <div>
+                            <h5 class="mb-0">No Active Thermal Anomalies</h5>
+                            <p class="text-muted small mb-0" id="mapEmptyMessage">
+                                Zero thermal anomalies recorded for Nainital Forest Division. Basemap remains operational.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>

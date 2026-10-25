@@ -87,55 +87,107 @@
 
         // Nainital Division Center: 29.3803° N, 79.4636° E
         var nainitalCenter = [29.3803, 79.4636];
-        var defaultZoom = 12;
+        var defaultZoom = 13;
 
         try {
             appState.map = L.map("dashboardMap", {
                 center: nainitalCenter,
                 zoom: defaultZoom,
-                minZoom: 9,
-                maxZoom: 18,
+                minZoom: 8,
+                maxZoom: 19,
                 zoomControl: true,
                 attributionControl: true,
             });
 
-            // Basemap Layers
-            var cartoKey = window.CARTO_API_KEY || "";
-            var voyagerUrl = cartoKey
-                ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=" + encodeURIComponent(cartoKey)
-                : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
-            var voyagerAttribution = cartoKey
-                ? '&copy; <a href="https://carto.com/" target="_blank" rel="noopener">CARTO</a> &bull; &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
-                : 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &bull; Nainital Forest Division';
+            // 1. Primary Road & Settlement Basemap: Standard OpenStreetMap
+            // Global coverage providing full street-level details, road names, settlements, village paths in Nainital
+            var osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+                minZoom: 8,
+                maxZoom: 19,
+                crossOrigin: true,
+            });
+
+            // 2. Topographic Map: OpenTopoMap with elevation shading, peaks and contour lines
+            var topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+                attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org" target="_blank" rel="noopener">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a>',
+                subdomains: "abc",
+                minZoom: 8,
+                maxNativeZoom: 17,
+                maxZoom: 19,
+            });
+
+            // 3. High-Resolution Aerial Satellite Imagery: Esri World Imagery
+            // Visualizing the mountain terrain, forest canopy, and pine slopes across Nainital Division
+            var satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+                attribution: 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &bull; Source: Esri, Maxar, Earthstar Geographics',
+                minZoom: 8,
+                maxZoom: 19,
+            });
 
             appState.basemapLayers = {
-                voyager: L.tileLayer(voyagerUrl, {
-                    attribution: voyagerAttribution,
-                    subdomains: cartoKey ? "abcd" : [],
-                    maxZoom: 19,
-                }),
-                topo: L.tileLayer(
-                    "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-                    {
-                        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org" target="_blank" rel="noopener">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a>',
-                        subdomains: "abc",
-                        maxNativeZoom: 17,
-                        maxZoom: 18,
-                    }
-                ),
-                osm: L.tileLayer(
-                    "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
-                    {
-                        attribution: '&copy; OpenStreetMap France &bull; &copy; OpenStreetMap contributors',
-                        subdomains: "abc",
-                        maxZoom: 20,
-                    }
-                ),
+                osm: osmLayer,
+                topo: topoLayer,
+                voyager: satelliteLayer, // Mapped to satellite imagery to preserve existing button ID
             };
 
-            // Set default basemap
-            appState.currentBasemap = appState.basemapLayers.voyager;
+            // Set OpenStreetMap as the default active basemap
+            appState.currentBasemap = appState.basemapLayers.osm;
             appState.currentBasemap.addTo(appState.map);
+
+            // Tile error state management
+            var tileErrorBanner = qs("#mapTileErrorBanner");
+            var tileErrorText = qs("#mapTileErrorText");
+            var btnSwitchBackup = qs("#btnSwitchBackupLayer");
+            var consecutiveTileErrors = 0;
+            var tileErrorTimeout = null;
+
+            function showTileError(msg) {
+                if (tileErrorBanner) {
+                    if (tileErrorText) tileErrorText.textContent = msg;
+                    tileErrorBanner.classList.remove("d-none");
+                }
+            }
+
+            function clearTileError() {
+                if (tileErrorBanner) {
+                    tileErrorBanner.classList.add("d-none");
+                }
+                consecutiveTileErrors = 0;
+            }
+
+            function attachTileErrorHandling(layer, layerName) {
+                layer.on("tileerror", function () {
+                    consecutiveTileErrors++;
+                    if (consecutiveTileErrors >= 4) {
+                        showTileError("Map tiles for " + layerName + " failed to load. Please check your network connection.");
+                    }
+                    clearTimeout(tileErrorTimeout);
+                    tileErrorTimeout = setTimeout(function () {
+                        consecutiveTileErrors = 0;
+                    }, 4000);
+                });
+
+                layer.on("tileload", function () {
+                    if (consecutiveTileErrors > 0) consecutiveTileErrors--;
+                    if (consecutiveTileErrors === 0) clearTileError();
+                });
+            }
+
+            attachTileErrorHandling(osmLayer, "OpenStreetMap");
+            attachTileErrorHandling(topoLayer, "OpenTopoMap");
+            attachTileErrorHandling(satelliteLayer, "Satellite Imagery");
+
+            if (btnSwitchBackup) {
+                btnSwitchBackup.addEventListener("click", function () {
+                    if (appState.currentBasemap === appState.basemapLayers.osm) {
+                        switchBasemap(appState.basemapLayers.voyager, qs("#btnLayerVoyager"));
+                    } else {
+                        switchBasemap(appState.basemapLayers.osm, qs("#btnLayerOSM"));
+                    }
+                    clearTileError();
+                });
+            }
 
             // Hide loading spinner
             var spinner = qs("#mapLoadingSpinner");
@@ -190,6 +242,8 @@
 
             function switchBasemap(newLayer, activeBtn) {
                 if (!newLayer || appState.currentBasemap === newLayer) return;
+
+                clearTileError();
 
                 if (appState.currentBasemap && appState.map.hasLayer(appState.currentBasemap)) {
                     appState.map.removeLayer(appState.currentBasemap);
