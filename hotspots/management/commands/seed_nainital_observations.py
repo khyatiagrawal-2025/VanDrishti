@@ -38,6 +38,7 @@ class Command(BaseCommand):
                 "frp_mw": 14.8,
                 "priority": "high",
                 "status": "new",
+                "data_nature": "simulated",
                 "notes": "Thermal anomaly detected on steep pine-dominated slope. High slope exposure, smoke plume visibility requires ground watchtower check.",
             },
             {
@@ -51,8 +52,9 @@ class Command(BaseCommand):
                 "confidence": 88,
                 "brightness_temp_k": 339.2,
                 "frp_mw": 11.2,
-                "priority": "high",
+                    "priority": "high",
                 "status": "under-review",
+                "data_nature": "simulated",
                 "notes": "Dense oak canopy anomaly. Assigned to Bhowali-Kilbury beat guard for perimeter check. No rapid spread detected.",
             },
             {
@@ -68,6 +70,7 @@ class Command(BaseCommand):
                 "frp_mw": 7.5,
                 "priority": "medium",
                 "status": "under-review",
+                "data_nature": "simulated",
                 "notes": "Chir pine litter burn suspicion near boundary fireline. Forest beat team notified.",
             },
             {
@@ -83,6 +86,7 @@ class Command(BaseCommand):
                 "frp_mw": 5.2,
                 "priority": "medium",
                 "status": "new",
+                "data_nature": "simulated",
                 "notes": "Moderate thermal signature on north-facing ridge. Moderate wind conditions.",
             },
             {
@@ -98,6 +102,7 @@ class Command(BaseCommand):
                 "frp_mw": 3.8,
                 "priority": "low",
                 "status": "verified",
+                "data_nature": "simulated",
                 "notes": "Controlled agricultural residue clearance on terraced boundary near Sukhatal. Verified safe by local beat guard.",
             },
             {
@@ -113,6 +118,7 @@ class Command(BaseCommand):
                 "frp_mw": 2.4,
                 "priority": "low",
                 "status": "closed",
+                "data_nature": "simulated",
                 "notes": "Low radiance reading. Solar reflection from corrugated roof near ridge confirmed on inspection. Closed as false alarm.",
             },
             {
@@ -128,6 +134,7 @@ class Command(BaseCommand):
                 "frp_mw": 9.6,
                 "priority": "high",
                 "status": "closed",
+                "data_nature": "simulated",
                 "notes": "Smoldering dry grass patch quickly doused by forest fire squad on yesterday's patrol. Post-event monitoring completed.",
             },
             {
@@ -143,6 +150,7 @@ class Command(BaseCommand):
                 "frp_mw": 6.1,
                 "priority": "medium",
                 "status": "closed",
+                "data_nature": "simulated",
                 "notes": "Underbrush burn alongside motor road; extinguished by beat team. No tree canopy damaged.",
             },
         ]

@@ -7,16 +7,43 @@
 <!-- Dashboard Page Header -->
 <div class="vd-dashboard-header animate-fade-in">
     <div class="vd-header-main">
-        <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
             <span class="vd-pill-indicator">
                 <span class="vd-pulse-ring"></span>
                 <span class="vd-pulse-core"></span>
             </span>
             <span class="vd-caption-label">SATELLITE SURVEILLANCE &bull; NAINITAL FOREST DIVISION</span>
+
+            <!-- Distinct Data Nature Label: Simulated vs Historical vs Real -->
+            {% if data_mode == 'simulated' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1"
+                  title="Offline demonstration dataset for prototype algorithm evaluation in Nainital">
+                <i class="bi bi-flask me-1"></i>SIMULATED BENCHMARK DATASET
+            </span>
+            {% elif data_mode == 'historical' %}
+            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-2 py-1"
+                  title="Historical NASA FIRMS archive observations for Nainital District">
+                <i class="bi bi-clock-history me-1"></i>HISTORICAL FIRMS OBSERVATIONS
+            </span>
+            {% elif data_mode == 'real' %}
+            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle px-2 py-1"
+                  title="Live active satellite telemetry ingested via FIRMS API">
+                <i class="bi bi-broadcast me-1"></i>LIVE FIRMS TELEMETRY
+            </span>
+            {% elif data_mode == 'mixed' %}
+            <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle px-2 py-1"
+                  title="Combined historical and benchmark dataset">
+                <i class="bi bi-layers me-1"></i>MULTI-SOURCE DATASET
+            </span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-secondary px-2 py-1">
+                AWAITING SATELLITE PASS
+            </span>
+            {% endif %}
         </div>
         <h1 class="vd-page-heading">Forest Monitoring &amp; Hotspot Intelligence</h1>
         <p class="vd-page-subtext">
-            Continuous infrared anomaly detection, terrain-calibrated priority ranking, and forest response tracking across the Nainital Division, Uttarakhand.
+            Continuous infrared thermal anomaly surveillance, explainable prototype priority ranking, and response tracking across the Nainital Division, Uttarakhand.
         </p>
     </div>
     <div class="vd-header-actions">
@@ -36,9 +63,9 @@
         <i class="bi bi-shield-exclamation"></i>
     </div>
     <div class="vd-advisory-text">
-        <strong>Field Verification Protocol:</strong> Satellite observations represent thermal anomalies detected via spaceborne radiometers (NASA FIRMS MODIS/VIIRS). Each anomaly requires beat guard line-of-sight check before operational crew dispatch.
+        <strong>Field Verification Protocol:</strong> Satellite hotspots indicate infrared thermal anomalies detected via spaceborne radiometers (NASA FIRMS MODIS/VIIRS). Hotspots do not independently confirm active forest fires. Each anomaly requires beat guard line-of-sight check prior to operational crew dispatch.
     </div>
-    <div class="vd-advisory-tag">Operational SOP</div>
+    <div class="vd-advisory-tag">Prototype SOP</div>
 </div>
 
 <!-- KPI Metric Cards Grid (Staggered Animation) -->
@@ -56,7 +83,9 @@
             <div class="vd-kpi-body">
                 <div class="vd-kpi-value-row">
                     <span class="vd-kpi-value text-forest" id="summaryObservations">{{ total_observations }}</span>
-                    <span class="vd-kpi-badge">Division Total</span>
+                    <span class="vd-kpi-badge">
+                        {% if data_mode == 'simulated' %}Simulated{% elif data_mode == 'historical' %}Historical{% else %}Division Total{% endif %}
+                    </span>
                 </div>
                 <p class="vd-kpi-caption">
                     {% if total_observations > 0 %}
@@ -92,47 +121,51 @@
                 </div>
                 <p class="vd-kpi-caption">
                     {% if high_priority_count > 0 %}
-                        Immediate field inspection recommended
+                        Watchtower line-of-sight check recommended
                     {% else %}
-                        Zero critical thermal anomalies
+                        Zero high-priority thermal signatures
                     {% endif %}
                 </p>
             </div>
             <div class="vd-kpi-footer">
-                <i class="bi bi-exclamation-triangle me-1"></i>High slope / Chir pine risk
+                <i class="bi bi-exclamation-triangle me-1"></i>Score &ge; 70 &bull; Chir pine / steep slope
             </div>
         </div>
     </div>
 
-    <!-- KPI 3: Cases Under Review -->
+    <!-- KPI 3: Mean Radiance & Confidence -->
     <div class="col-12 col-sm-6 col-xl-3">
         <div class="vd-kpi-card card-accent-amber vd-kpi-stagger-3">
             <div class="vd-kpi-header">
-                <span class="vd-kpi-label">CASES UNDER REVIEW</span>
+                <span class="vd-kpi-label">SENSOR RADIANCE &amp; CONF</span>
                 <span class="vd-kpi-icon-wrap bg-amber-subtle">
-                    <i class="bi bi-clipboard2-check text-warning-amber"></i>
+                    <i class="bi bi-lightning-charge text-warning-amber"></i>
                 </span>
             </div>
             <div class="vd-kpi-body">
                 <div class="vd-kpi-value-row">
-                    <span class="vd-kpi-value text-warning-amber" id="summaryCases">{{ cases_under_review_count }}</span>
-                    <span class="vd-kpi-badge badge-amber">Field Review</span>
+                    <span class="vd-kpi-value text-warning-amber" id="summaryMeanConf">
+                        {% if avg_confidence %}{{ avg_confidence }}%{% else %}&ndash;{% endif %}
+                    </span>
+                    <span class="vd-kpi-badge badge-amber">
+                        {% if peak_frp %}Peak: {{ peak_frp }} MW{% else %}Nominal{% endif %}
+                    </span>
                 </div>
                 <p class="vd-kpi-caption">
                     {% if cases_under_review_count > 0 %}
-                        Assigned to beat range officers
+                        {{ cases_under_review_count }} beat review case{% if cases_under_review_count != 1 %}s{% endif %} active
                     {% else %}
-                        No active cases awaiting review
+                        Mean VIIRS/MODIS detection confidence
                     {% endif %}
                 </p>
             </div>
             <div class="vd-kpi-footer">
-                <i class="bi bi-shield-check me-1"></i>Kumaon circle dispatch
+                <i class="bi bi-shield-check me-1"></i>Under Review: {{ cases_under_review_count }}
             </div>
         </div>
     </div>
 
-    <!-- KPI 4: Satellite Telemetry Update -->
+    <!-- KPI 4: Satellite Telemetry Ingestion -->
     <div class="col-12 col-sm-6 col-xl-3">
         <div class="vd-kpi-card card-accent-sage vd-kpi-stagger-4">
             <div class="vd-kpi-header">
@@ -163,35 +196,41 @@
                 </p>
             </div>
             <div class="vd-kpi-footer">
-                <i class="bi bi-clock-history me-1"></i>MODIS Terra/Aqua &bull; VIIRS
+                <i class="bi bi-clock-history me-1"></i>Sync separate from observation pass
             </div>
         </div>
     </div>
 
 </div>
 
-<!-- Centerpiece Map and Priority Stratification -->
+<!-- Centerpiece Map Section -->
 <div class="row g-3 mb-4" id="mapSection">
 
     <!-- Interactive Leaflet Map for Nainital Forest Division -->
-    <div class="col-12 col-xl-8">
+    <div class="col-12">
         <div class="vd-panel-card h-100">
             <div class="vd-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="vd-panel-title">
-                        <i class="bi bi-map me-2 text-forest"></i>Observation Map &mdash; Nainital Forest Division
+                        <i class="bi bi-map me-2 text-forest"></i>Interactive Hotspot Map &mdash; Nainital Forest Division
                     </span>
                     <span class="badge vd-badge-live" id="mapAnomalyCountBadge">
                         {{ total_observations }} Anomaly Marker{% if total_observations != 1 %}s{% endif %}
                     </span>
+                    <span class="badge bg-secondary-subtle text-secondary small d-none" id="mapFilteredNoticeBadge">
+                        Filtered View
+                    </span>
                 </div>
                 <!-- Map Actions & Layer Controls -->
                 <div class="vd-map-controls-group">
+                    <button type="button" class="btn btn-sm btn-outline-secondary vd-map-btn" id="btnFitBounds" title="Fit view to show all visible hotspots">
+                        <i class="bi bi-fullscreen me-1"></i>Fit Bounds
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary vd-map-btn" id="btnResetMapView" title="Reset map view to Nainital Center">
                         <i class="bi bi-arrows-fullscreen me-1"></i>Reset View
                     </button>
                     <div class="btn-group btn-group-sm" role="group" aria-label="Map Basemap Switcher">
-                        <button type="button" class="btn btn-outline-secondary active" id="btnLayerVoyager" title="Voyager Clean Map">Voyager</button>
+                        <button type="button" class="btn btn-outline-secondary active" id="btnLayerVoyager" title="Clean Street Map">Voyager</button>
                         <button type="button" class="btn btn-outline-secondary" id="btnLayerTopo" title="Topographic Elevation Map">Topo</button>
                         <button type="button" class="btn btn-outline-secondary" id="btnLayerOSM" title="OpenStreetMap">OSM</button>
                     </div>
@@ -200,7 +239,7 @@
 
             <div class="vd-panel-body p-0 position-relative">
                 <!-- Interactive Leaflet Map Mount Point -->
-                <div id="dashboardMap" class="vd-leaflet-map-container" style="min-height: 480px; width: 100%;">
+                <div id="dashboardMap" class="vd-leaflet-map-container" style="min-height: 500px; width: 100%;">
                     <!-- Fallback while tiles load -->
                     <div class="vd-map-loading" id="mapLoadingSpinner">
                         <div class="spinner-border text-forest spinner-border-sm me-2" role="status"></div>
@@ -219,15 +258,15 @@
                     <div class="vd-legend-title">Observation Priority</div>
                     <div class="vd-legend-item">
                         <span class="vd-legend-dot dot-critical"></span>
-                        <span>High Priority</span>
+                        <span>High Priority (&ge;70)</span>
                     </div>
                     <div class="vd-legend-item">
                         <span class="vd-legend-dot dot-amber"></span>
-                        <span>Medium Priority</span>
+                        <span>Medium Priority (40-69)</span>
                     </div>
                     <div class="vd-legend-item">
                         <span class="vd-legend-dot dot-emerald"></span>
-                        <span>Low Priority</span>
+                        <span>Low Priority (&lt;40)</span>
                     </div>
                     <div class="vd-legend-divider"></div>
                     <div class="vd-legend-item">
@@ -236,18 +275,16 @@
                     </div>
                 </div>
 
-                <!-- Empty State Overlay on Map (when 0 observations) -->
-                {% if total_observations == 0 %}
-                <div class="vd-map-empty-overlay" id="mapEmptyOverlay">
+                <!-- Empty State Overlay on Map -->
+                <div class="vd-map-empty-overlay {% if total_observations > 0 %}d-none{% endif %}" id="mapEmptyOverlay">
                     <div class="vd-empty-box">
                         <div class="vd-empty-icon"><i class="bi bi-shield-check"></i></div>
                         <h5>No Active Thermal Anomalies</h5>
-                        <p class="text-muted small mb-0">
-                            Satellite passes detected zero high-radiance thermal signatures in Nainital Forest Division.
+                        <p class="text-muted small mb-0" id="mapEmptyMessage">
+                            Zero high-radiance thermal signatures currently displayed for Nainital Forest Division.
                         </p>
                     </div>
                 </div>
-                {% endif %}
             </div>
 
             <div class="vd-panel-footer d-flex flex-wrap justify-content-between align-items-center">
@@ -259,8 +296,13 @@
         </div>
     </div>
 
-    <!-- Priority Distribution Analytics Panel -->
-    <div class="col-12 col-xl-4">
+</div>
+
+<!-- Analytics and Historical Trends Grid -->
+<div class="row g-3 mb-4" id="analyticsSection">
+
+    <!-- Chart 1: Priority Stratification (Donut) -->
+    <div class="col-12 col-lg-4">
         <div class="vd-panel-card h-100 d-flex flex-column">
             <div class="vd-panel-header d-flex justify-content-between align-items-center">
                 <span class="vd-panel-title">
@@ -270,26 +312,24 @@
             </div>
 
             <div class="vd-panel-body flex-grow-1 d-flex flex-column">
-                <p class="vd-caption-subtext mb-3">
-                    Calculated from satellite Fire Radiative Power (FRP), detection confidence, and Nainital slope exposure.
+                <p class="vd-caption-subtext mb-2">
+                    Observation counts stratified by explainable priority category.
                 </p>
 
                 <!-- Chart Canvas Area -->
-                <div class="vd-chart-wrapper position-relative flex-grow-1 d-flex align-items-center justify-content-center" style="min-height: 250px;">
-                    <canvas id="priorityChart" aria-label="Priority distribution chart" role="img"></canvas>
+                <div class="vd-chart-wrapper position-relative flex-grow-1 d-flex align-items-center justify-content-center" style="min-height: 220px;">
+                    <canvas id="priorityChart" aria-label="Priority stratification chart" role="img"></canvas>
 
-                    <!-- Chart Empty State -->
                     <div class="vd-chart-empty-state {% if total_observations > 0 %}d-none{% endif %}" id="priorityChartEmpty">
                         <div class="vd-chart-empty-graphic">
                             <i class="bi bi-bar-chart-line"></i>
                         </div>
                         <p class="small text-muted mb-0">No priority data to plot</p>
-                        <span class="vd-chart-empty-hint">Awaiting scored satellite observations</span>
                     </div>
                 </div>
 
-                <!-- Real Priority Breakdown Metric List -->
-                <div class="vd-priority-breakdown mt-3">
+                <!-- Priority Metric Breakdown List -->
+                <div class="vd-priority-breakdown mt-2">
                     <div class="vd-breakdown-row" data-priority="high">
                         <div class="d-flex align-items-center gap-2">
                             <span class="status-dot status-dot-high"></span>
@@ -298,11 +338,7 @@
                         <div class="d-flex align-items-center gap-2">
                             <span class="vd-breakdown-count fw-bold text-critical" id="countHigh">{{ high_priority_count }}</span>
                             <span class="vd-breakdown-pct text-muted small" id="pctHigh">
-                                {% if total_observations > 0 %}
-                                    ({% widthratio high_priority_count total_observations 100 %}%)
-                                {% else %}
-                                    (0%)
-                                {% endif %}
+                                {% if total_observations > 0 %}({% widthratio high_priority_count total_observations 100 %}%){% else %}(0%){% endif %}
                             </span>
                         </div>
                     </div>
@@ -315,11 +351,7 @@
                         <div class="d-flex align-items-center gap-2">
                             <span class="vd-breakdown-count fw-bold text-warning-amber" id="countMedium">{{ medium_priority_count }}</span>
                             <span class="vd-breakdown-pct text-muted small" id="pctMedium">
-                                {% if total_observations > 0 %}
-                                    ({% widthratio medium_priority_count total_observations 100 %}%)
-                                {% else %}
-                                    (0%)
-                                {% endif %}
+                                {% if total_observations > 0 %}({% widthratio medium_priority_count total_observations 100 %}%){% else %}(0%){% endif %}
                             </span>
                         </div>
                     </div>
@@ -332,11 +364,7 @@
                         <div class="d-flex align-items-center gap-2">
                             <span class="vd-breakdown-count fw-bold text-forest" id="countLow">{{ low_priority_count }}</span>
                             <span class="vd-breakdown-pct text-muted small" id="pctLow">
-                                {% if total_observations > 0 %}
-                                    ({% widthratio low_priority_count total_observations 100 %}%)
-                                {% else %}
-                                    (0%)
-                                {% endif %}
+                                {% if total_observations > 0 %}({% widthratio low_priority_count total_observations 100 %}%){% else %}(0%){% endif %}
                             </span>
                         </div>
                     </div>
@@ -351,6 +379,94 @@
         </div>
     </div>
 
+    <!-- Chart 2: Historical & Recent Timeline Trend -->
+    <div class="col-12 col-lg-5">
+        <div class="vd-panel-card h-100 d-flex flex-column">
+            <div class="vd-panel-header d-flex justify-content-between align-items-center">
+                <span class="vd-panel-title">
+                    <i class="bi bi-graph-up me-2 text-forest"></i>Observation Timeline Trends
+                </span>
+                <span class="badge vd-badge-subtle">Temporal Pass</span>
+            </div>
+
+            <div class="vd-panel-body flex-grow-1 d-flex flex-column">
+                <p class="vd-caption-subtext mb-2">
+                    Daily detection volumes across satellite acquisition timestamps (does not forecast future fires).
+                </p>
+
+                <!-- Timeline Chart Canvas -->
+                <div class="vd-chart-wrapper position-relative flex-grow-1 d-flex align-items-center justify-content-center" style="min-height: 220px;">
+                    <canvas id="timelineChart" aria-label="Observation timeline chart" role="img"></canvas>
+
+                    <div class="vd-chart-empty-state {% if total_observations > 0 %}d-none{% endif %}" id="timelineChartEmpty">
+                        <div class="vd-chart-empty-graphic">
+                            <i class="bi bi-clock-history"></i>
+                        </div>
+                        <p class="small text-muted mb-0">No timeline data available</p>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2 small text-muted">
+                    <span><i class="bi bi-circle-fill text-critical me-1" style="font-size: 8px;"></i>High Priority</span>
+                    <span><i class="bi bi-circle-fill text-warning-amber me-1" style="font-size: 8px;"></i>Medium</span>
+                    <span><i class="bi bi-circle-fill text-forest me-1" style="font-size: 8px;"></i>Low</span>
+                </div>
+            </div>
+
+            <div class="vd-panel-footer">
+                <span class="small text-muted">
+                    Temporal distribution based on satellite acquisition time (UTC)
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart 3: Score Distribution & Radiance Metrics -->
+    <div class="col-12 col-lg-3">
+        <div class="vd-panel-card h-100 d-flex flex-column">
+            <div class="vd-panel-header d-flex justify-content-between align-items-center">
+                <span class="vd-panel-title">
+                    <i class="bi bi-bar-chart-steps me-2 text-forest"></i>Score Distribution
+                </span>
+                <span class="badge vd-badge-subtle">Prototype Bins</span>
+            </div>
+
+            <div class="vd-panel-body flex-grow-1 d-flex flex-column">
+                <p class="vd-caption-subtext mb-2">
+                    Distribution of calculated priority scores (0-100).
+                </p>
+
+                <div class="vd-chart-wrapper position-relative flex-grow-1 d-flex align-items-center justify-content-center" style="min-height: 180px;">
+                    <canvas id="scoreDistChart" aria-label="Score distribution histogram" role="img"></canvas>
+
+                    <div class="vd-chart-empty-state {% if total_observations > 0 %}d-none{% endif %}" id="scoreDistChartEmpty">
+                        <div class="vd-chart-empty-graphic">
+                            <i class="bi bi-speedometer2"></i>
+                        </div>
+                        <p class="small text-muted mb-0">No score distribution data</p>
+                    </div>
+                </div>
+
+                <div class="vd-score-summary-grid mt-3 p-2 bg-light rounded border">
+                    <div class="d-flex justify-content-between align-items-center mb-1 small">
+                        <span class="text-muted">Mean Confidence:</span>
+                        <span class="font-monospace fw-bold text-dark">{% if avg_confidence %}{{ avg_confidence }}%{% else %}&ndash;{% endif %}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center small">
+                        <span class="text-muted">Peak FRP:</span>
+                        <span class="font-monospace fw-bold text-dark">{% if peak_frp %}{{ peak_frp }} MW{% else %}&ndash;{% endif %}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vd-panel-footer">
+                <span class="small text-muted">
+                    Rule weights: 30% C &bull; 30% R &bull; 15% FRP &bull; 15% T &bull; 10% F
+                </span>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- Observations Management Section -->
@@ -358,14 +474,14 @@
     <div class="vd-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div class="d-flex align-items-center gap-2">
             <span class="vd-panel-title">
-                <i class="bi bi-table me-2 text-forest"></i>Recent Satellite Observations
+                <i class="bi bi-table me-2 text-forest"></i>Ranked Satellite Observations
             </span>
             <span class="badge vd-badge-count">
                 Showing <span id="dashboardResultCount">{{ total_observations }}</span> of {{ total_observations }}
             </span>
         </div>
         <div class="vd-table-quick-actions">
-            <span class="vd-caption-subtext d-none d-md-inline">Click any row to open observation details</span>
+            <span class="vd-caption-subtext d-none d-md-inline">Click any row to open explainable score &amp; details</span>
         </div>
     </div>
 
@@ -376,7 +492,7 @@
             <div class="row g-2 align-items-end">
 
                 <!-- Search Input -->
-                <div class="col-12 col-md-4">
+                <div class="col-12 col-md-3">
                     <label for="dashboardSearch" class="form-label vd-field-label">Search Hotspots</label>
                     <div class="input-group">
                         <span class="input-group-text bg-white border-end-0">
@@ -392,9 +508,9 @@
                     <label for="filterPriority" class="form-label vd-field-label">Priority</label>
                     <select id="filterPriority" class="form-select" data-vd-filter="priority">
                         <option value="all" selected>All Priorities</option>
-                        <option value="high">High Priority</option>
-                        <option value="medium">Medium Priority</option>
-                        <option value="low">Low Priority</option>
+                        <option value="high">High (&ge;70)</option>
+                        <option value="medium">Medium (40-69)</option>
+                        <option value="low">Low (&lt;40)</option>
                     </select>
                 </div>
 
@@ -410,6 +526,17 @@
                     </select>
                 </div>
 
+                <!-- Confidence Filter Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterConfidence" class="form-label vd-field-label">Confidence</label>
+                    <select id="filterConfidence" class="form-select" data-vd-filter="confidence">
+                        <option value="all" selected>All Levels</option>
+                        <option value="high">High (&ge;80%)</option>
+                        <option value="moderate">Moderate (50-79%)</option>
+                        <option value="low">Low (&lt;50%)</option>
+                    </select>
+                </div>
+
                 <!-- Date Range Dropdown -->
                 <div class="col-6 col-md-2">
                     <label for="filterDate" class="form-label vd-field-label">Observation Window</label>
@@ -422,9 +549,10 @@
                 </div>
 
                 <!-- Reset Filters Button -->
-                <div class="col-6 col-md-2">
-                    <button type="button" id="dashboardFilterReset" class="btn btn-outline-secondary w-100 vd-btn-reset">
-                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Filters
+                <div class="col-12 col-md-1">
+                    <button type="button" id="dashboardFilterReset" class="btn btn-outline-secondary w-100 vd-btn-reset" title="Reset all filters">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                        <span class="d-md-none ms-1">Reset</span>
                     </button>
                 </div>
 
@@ -447,10 +575,14 @@
                         <th scope="col" class="sortable text-center" data-sort="confidence">
                             Confidence <i class="bi bi-arrow-down-up ms-1"></i>
                         </th>
-                        <th scope="col" class="sortable text-center" data-sort="priority">
-                            Priority <i class="bi bi-arrow-down-up ms-1"></i>
+                        <th scope="col" class="sortable text-center" data-sort="frp">
+                            FRP (MW) <i class="bi bi-arrow-down-up ms-1"></i>
+                        </th>
+                        <th scope="col" class="sortable text-center" data-sort="score">
+                            Priority Score <i class="bi bi-arrow-down-up ms-1"></i>
                         </th>
                         <th scope="col" class="text-center">Review Status</th>
+                        <th scope="col" class="text-center">Dataset</th>
                         <th scope="col" class="text-end">Action</th>
                     </tr>
                 </thead>
@@ -461,6 +593,7 @@
                         data-id="{{ obs.observation_id }}"
                         data-priority="{{ obs.priority }}"
                         data-status="{{ obs.status }}"
+                        data-nature="{{ obs.data_nature }}"
                         data-date="{{ obs.detected_at|date:'c' }}"
                         data-lat="{{ obs.latitude }}"
                         data-lng="{{ obs.longitude }}"
@@ -469,7 +602,8 @@
                         data-source="{{ obs.satellite_source }}"
                         data-confidence="{{ obs.confidence|default:0 }}"
                         data-temp="{{ obs.brightness_temp_k|default:'' }}"
-                        data-frp="{{ obs.frp_mw|default:'' }}"
+                        data-frp="{{ obs.frp_mw|default:0 }}"
+                        data-score="{{ obs.computed_score|default:0 }}"
                         data-notes="{{ obs.notes }}"
                         tabindex="0"
                         role="button"
@@ -510,15 +644,27 @@
                             {% endif %}
                         </td>
 
-                        <!-- Priority Badge -->
-                        <td class="text-center">
-                            {% if obs.priority == 'high' %}
-                                <span class="badge vd-badge-priority badge-high">High</span>
-                            {% elif obs.priority == 'medium' %}
-                                <span class="badge vd-badge-priority badge-medium">Medium</span>
+                        <!-- Fire Radiative Power (FRP) -->
+                        <td class="text-center font-monospace">
+                            {% if obs.frp_mw %}
+                            <span class="fw-semibold">{{ obs.frp_mw }}</span> <span class="small text-muted">MW</span>
                             {% else %}
-                                <span class="badge vd-badge-priority badge-low">Low</span>
+                            <span class="text-muted">&ndash;</span>
                             {% endif %}
+                        </td>
+
+                        <!-- Priority Score & Category -->
+                        <td class="text-center">
+                            <div class="d-inline-flex flex-column align-items-center">
+                                {% if obs.priority == 'high' %}
+                                    <span class="badge vd-badge-priority badge-high mb-1">High</span>
+                                {% elif obs.priority == 'medium' %}
+                                    <span class="badge vd-badge-priority badge-medium mb-1">Medium</span>
+                                {% else %}
+                                    <span class="badge vd-badge-priority badge-low mb-1">Low</span>
+                                {% endif %}
+                                <span class="small font-monospace text-muted">{{ obs.computed_score|default:"--" }}/100</span>
+                            </div>
                         </td>
 
                         <!-- Review Status Badge -->
@@ -531,6 +677,17 @@
                                 <span class="badge vd-badge-status status-verified">Verified</span>
                             {% else %}
                                 <span class="badge vd-badge-status status-closed">Closed</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Dataset Nature -->
+                        <td class="text-center">
+                            {% if obs.data_nature == 'simulated' %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle small" title="Simulated benchmark">Demo</span>
+                            {% elif obs.data_nature == 'historical' %}
+                                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle small" title="Historical archive">Archive</span>
+                            {% else %}
+                                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle small" title="Real FIRMS telemetry">Real</span>
                             {% endif %}
                         </td>
 
@@ -568,13 +725,25 @@
             </div>
         </div>
 
+        <!-- Client-Side Pagination Bar -->
+        <div class="vd-pagination-wrapper d-flex flex-wrap justify-content-between align-items-center mt-3 pt-3 border-top" id="vdPaginationWrap">
+            <div class="small text-muted" id="vdPaginationInfo">
+                Showing observations
+            </div>
+            <nav aria-label="Observation table navigation">
+                <ul class="pagination pagination-sm mb-0" id="vdPaginationList">
+                    <!-- Populated dynamically via dashboard.js -->
+                </ul>
+            </nav>
+        </div>
+
     </div>
 
     <div class="vd-panel-footer d-flex flex-wrap justify-content-between align-items-center">
         <span class="small text-muted">
-            <i class="bi bi-database me-1"></i>Ingested via NASA FIRMS &bull; Nainital Spatial Bounding Box: [29.15°N, 79.10°E to 29.60°N, 79.75°E]
+            <i class="bi bi-database me-1"></i>Ingested via NASA FIRMS &bull; Nainital Spatial Bounding Box: [29.10°N, 79.10°E to 29.65°N, 79.80°E]
         </span>
-        <span class="small text-muted">All thermal records are cataloged in UTC</span>
+        <span class="small text-muted">All thermal records cataloged in UTC</span>
     </div>
 </div>
 

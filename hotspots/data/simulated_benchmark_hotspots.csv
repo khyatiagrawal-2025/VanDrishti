@@ -1,0 +1,7 @@
+observation_id,latitude,longitude,observation_time,confidence,frp,satellite_source,location_name,forest_range,status,data_nature,notes
+VD-SIM-2026-001,29.3952,79.4418,2026-05-12T11:45:00Z,92,14.8,VIIRS (Suomi-NPP),China Peak Ridge,Nainital Central Range,new,simulated,High slope pine forest thermal anomaly simulated benchmark.
+VD-SIM-2026-002,29.4124,79.4682,2026-05-12T10:15:00Z,88,11.2,VIIRS (NOAA-20),Kilbury Oak Forest,Kilbury Oak Forest Range,under-review,simulated,Dense oak canopy anomaly benchmark for beat guard patrol.
+VD-SIM-2026-003,29.3621,79.4935,2026-05-12T07:30:00Z,76,7.5,MODIS (Aqua),Bhowali Sanatorium Hillside,Bhowali Forest Range,under-review,simulated,Chir pine litter burn benchmark near boundary fireline.
+VD-SIM-2026-004,29.4285,79.5241,2026-05-12T04:20:00Z,64,5.2,VIIRS (Suomi-NPP),Gagar Pass Eastern Flank,Ramgarh Forest Range,new,simulated,Moderate radiance signature on north-facing ridge.
+VD-SIM-2026-005,29.3510,79.4312,2026-05-11T20:40:00Z,55,3.8,MODIS (Terra),Sukhatal Valley Perimeter,Nainital South Range,verified,simulated,Agricultural residue clearance near terrace boundary.
+VD-SIM-2026-006,29.3789,79.5492,2026-05-11T13:10:00Z,49,2.4,VIIRS (NOAA-20),Mukteshwar Ridge Forest Beat,Mukteshwar Range,closed,simulated,Low radiance reading. Solar reflection from tin roof confirmed on inspection.

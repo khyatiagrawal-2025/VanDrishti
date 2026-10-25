@@ -1686,3 +1686,73 @@ body.vd-sidebar-collapsed .vd-sidebar-collapse-btn i {
         width: 100%;
     }
 }
+
+/* --------------------------------------------------------------------------
+   14. Explainable Score, Charts & Pagination Enhancements
+   -------------------------------------------------------------------------- */
+.vd-score-components-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.vd-score-component-item {
+    background: #FFFFFF;
+    border: 1px solid var(--vd-sage-border);
+    border-radius: var(--vd-radius-sm);
+    padding: 0.6rem 0.75rem;
+}
+
+.vd-score-component-item .progress-bar.bg-forest {
+    background-color: var(--vd-forest) !important;
+}
+
+.vd-pagination-wrapper .page-link {
+    color: var(--vd-deep-forest);
+    border-color: var(--vd-sage-border);
+    font-size: 0.825rem;
+    padding: 0.25rem 0.6rem;
+}
+
+.vd-pagination-wrapper .page-item.active .page-link {
+    background-color: var(--vd-forest);
+    border-color: var(--vd-forest);
+    color: #FFFFFF;
+}
+
+.vd-pagination-wrapper .page-item.disabled .page-link {
+    color: var(--vd-text-secondary);
+    background-color: transparent;
+}
+
+.vd-table-row {
+    cursor: pointer;
+    transition: background-color var(--vd-transition-fast);
+}
+
+.vd-table-row:hover {
+    background-color: var(--vd-sage) !important;
+}
+
+.vd-table-row.row-selected {
+    background-color: #E6F3EC !important;
+    border-left: 3px solid var(--vd-forest);
+}
+
+.badge-high {
+    background-color: var(--vd-critical-soft) !important;
+    color: var(--vd-critical) !important;
+    border: 1px solid var(--vd-critical-border);
+}
+
+.badge-medium {
+    background-color: var(--vd-amber-soft) !important;
+    color: #B26A00 !important;
+    border: 1px solid var(--vd-amber-border);
+}
+
+.badge-low {
+    background-color: var(--vd-emerald-soft) !important;
+    color: var(--vd-forest) !important;
+    border: 1px solid var(--vd-emerald-border);
+}

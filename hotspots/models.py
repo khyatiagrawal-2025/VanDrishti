@@ -15,6 +15,12 @@ class Observation(models.Model):
         ("closed", "Closed"),
     ]
 
+    DATA_NATURE_CHOICES = [
+        ("simulated", "Simulated Benchmark"),
+        ("historical", "Historical Record"),
+        ("real", "Real Satellite Observation"),
+    ]
+
     observation_id = models.CharField(max_length=32, unique=True, db_index=True)
     latitude = models.FloatField()
     longitude = models.FloatField()
@@ -27,6 +33,12 @@ class Observation(models.Model):
     frp_mw = models.FloatField(null=True, blank=True, help_text="Fire Radiative Power (MW)")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="medium")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new")
+    data_nature = models.CharField(
+        max_length=20,
+        choices=DATA_NATURE_CHOICES,
+        default="simulated",
+        help_text="Distinguishes real FIRMS observations, historical archives, and simulated benchmarks",
+    )
     notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -38,6 +50,16 @@ class Observation(models.Model):
 
     def __str__(self):
         return f"{self.observation_id} - {self.location_name} ({self.priority.upper()})"
+
+    @property
+    def score_details(self):
+        from .scoring import calculate_priority_score
+        return calculate_priority_score(self)
+
+    @property
+    def priority_score(self):
+        return self.score_details["score"]
+
 
 
 class TelemetrySync(models.Model):

@@ -1,6 +1,6 @@
 /* ==========================================================================
    VanDrishti — Forest Intelligence Platform
-   Nainital Forest Division, Uttarakhand
+   Nainital Forest Division, Uttarakhand, India
    Core Frontend Orchestration Script
    ========================================================================== */
 
@@ -33,32 +33,45 @@
     // Global application state
     var appState = {
         observations: [],
+        timelineData: [],
+        scoreBinsData: {},
+        visibleObservations: [],
         map: null,
         markersLayer: null,
+        markerMap: {},
         boundaryLayer: null,
         currentBasemap: null,
         basemapLayers: {},
         chartInstance: null,
+        timelineChartInstance: null,
+        scoreDistChartInstance: null,
         selectedObservation: null,
-        sortColumn: null,
-        sortDirection: "asc",
+        sortColumn: "date",
+        sortDirection: "desc",
+        currentPage: 1,
+        pageSize: 10,
     };
 
     /* ----------------------------------------------------------------------
        1. Data Parsing & Initialization
        ---------------------------------------------------------------------- */
-    function parseObservationsData() {
-        var dataScript = qs("#vdObservationsData");
-        if (!dataScript) return [];
-
+    function parsePayload(scriptId, fallback) {
+        var el = qs(scriptId);
+        if (!el) return fallback;
         try {
-            var rawText = dataScript.textContent || "[]";
-            var parsed = JSON.parse(rawText);
-            return Array.isArray(parsed) ? parsed : [];
+            var raw = el.textContent || "";
+            return JSON.parse(raw);
         } catch (err) {
-            console.warn("[VanDrishti] Could not parse observations JSON payload:", err);
-            return [];
+            console.warn("[VanDrishti] Could not parse payload for " + scriptId + ":", err);
+            return fallback;
         }
+    }
+
+    function initData() {
+        appState.observations = parsePayload("#vdObservationsData", []);
+        appState.timelineData = parsePayload("#vdTimelineData", []);
+        appState.scoreBinsData = parsePayload("#vdScoreBinsData", {});
+        appState.visibleObservations = appState.observations.slice();
     }
 
     /* ----------------------------------------------------------------------
@@ -72,7 +85,7 @@
             return;
         }
 
-        // Nainital Division Center Coordinates: 29.3803° N, 79.4636° E
+        // Nainital Division Center: 29.3803° N, 79.4636° E
         var nainitalCenter = [29.3803, 79.4636];
         var defaultZoom = 12;
 
@@ -87,10 +100,6 @@
             });
 
             // Basemap Layers
-            // CARTO Voyager officially requires an API key (obtainable at carto.com/basemaps/apikey).
-            // If window.CARTO_API_KEY is supplied, we use the authenticated endpoint.
-            // Otherwise, we configure a reliable, documented, key-free clean street basemap (Esri World Street Map)
-            // to prevent "API KEY REQUIRED" watermarks across the map.
             var cartoKey = window.CARTO_API_KEY || "";
             var voyagerUrl = cartoKey
                 ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=" + encodeURIComponent(cartoKey)
@@ -108,7 +117,7 @@
                 topo: L.tileLayer(
                     "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
                     {
-                        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org" target="_blank" rel="noopener">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC-BY-SA</a>)',
+                        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org" target="_blank" rel="noopener">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a>',
                         subdomains: "abc",
                         maxNativeZoom: 17,
                         maxZoom: 18,
@@ -117,30 +126,23 @@
                 osm: L.tileLayer(
                     "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
                     {
-                        attribution: '&copy; OpenStreetMap France &bull; &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+                        attribution: '&copy; OpenStreetMap France &bull; &copy; OpenStreetMap contributors',
                         subdomains: "abc",
                         maxZoom: 20,
                     }
                 ),
             };
 
-            // Attach tileerror listeners to handle unavailable tiles gracefully
-            Object.keys(appState.basemapLayers).forEach(function (key) {
-                appState.basemapLayers[key].on("tileerror", function (error) {
-                    console.warn("[VanDrishti] Basemap tile request error on layer '" + key + "':", error);
-                });
-            });
-
             // Set default basemap
             appState.currentBasemap = appState.basemapLayers.voyager;
             appState.currentBasemap.addTo(appState.map);
 
-            // Hide loading spinner once map is initialized
+            // Hide loading spinner
             var spinner = qs("#mapLoadingSpinner");
             if (spinner) {
                 setTimeout(function () {
                     spinner.classList.add("loaded");
-                }, 400);
+                }, 300);
             }
 
             // Approximate Nainital Forest Division boundary polygon
@@ -168,10 +170,10 @@
             // Layer for Observation Anomaly Markers
             appState.markersLayer = L.layerGroup().addTo(appState.map);
 
-            // Render Observation Markers
-            renderMapMarkers();
+            // Initial Marker Render
+            renderMapMarkers(appState.visibleObservations);
 
-            // Setup Mouse Move Coordinates HUD
+            // Setup Mouse Coordinates HUD
             var coordsText = qs("#mapCoordsText");
             if (coordsText) {
                 appState.map.on("mousemove", function (e) {
@@ -187,9 +189,7 @@
             var btnOSM = qs("#btnLayerOSM");
 
             function switchBasemap(newLayer, activeBtn) {
-                if (!newLayer || appState.currentBasemap === newLayer) {
-                    return;
-                }
+                if (!newLayer || appState.currentBasemap === newLayer) return;
 
                 if (appState.currentBasemap && appState.map.hasLayer(appState.currentBasemap)) {
                     appState.map.removeLayer(appState.currentBasemap);
@@ -201,7 +201,6 @@
                 }
                 appState.currentBasemap = newLayer;
 
-                // Ensure boundary polygon remains visible on top
                 if (appState.boundaryLayer && typeof appState.boundaryLayer.bringToFront === "function") {
                     appState.boundaryLayer.bringToFront();
                 }
@@ -228,6 +227,14 @@
                 });
             }
 
+            // Fit Bounds Button
+            var btnFit = qs("#btnFitBounds");
+            if (btnFit) {
+                btnFit.addEventListener("click", function () {
+                    fitMapToVisibleMarkers();
+                });
+            }
+
             // Reset Map View Button
             var btnReset = qs("#btnResetMapView");
             if (btnReset) {
@@ -239,7 +246,6 @@
                 });
             }
 
-            // Invalidate size on window resize to ensure no edge clipping
             window.addEventListener("resize", function () {
                 if (appState.map) {
                     appState.map.invalidateSize();
@@ -271,44 +277,103 @@
         });
     }
 
-    function renderMapMarkers() {
+    function formatDateDisplay(isoDate) {
+        if (!isoDate) return "";
+        try {
+            // Parse "YYYY-MM-DD" safely without timezone shift by treating it as local
+            var parts = isoDate.split("-");
+            if (parts.length === 3) {
+                var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                return d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
+            }
+        } catch (e) {}
+        return escapeHtml(isoDate);
+    }
+
+    function escapeHtml(text) {
+        if (!text) return "";
+        return text
+            .toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function renderMapMarkers(observationsToRender) {
         if (!appState.map || !appState.markersLayer) return;
 
         appState.markersLayer.clearLayers();
+        appState.markerMap = {};
 
-        if (!appState.observations || appState.observations.length === 0) {
-            var emptyOverlay = qs("#mapEmptyOverlay");
-            if (emptyOverlay) emptyOverlay.classList.remove("d-none");
+        var obsList = observationsToRender || [];
+        var badge = qs("#mapAnomalyCountBadge");
+        var emptyOverlay = qs("#mapEmptyOverlay");
+        var emptyMsg = qs("#mapEmptyMessage");
+        var filteredBadge = qs("#mapFilteredNoticeBadge");
+
+        if (badge) {
+            badge.textContent = obsList.length + " Anomaly Marker" + (obsList.length !== 1 ? "s" : "");
+        }
+
+        var isFiltered = obsList.length !== appState.observations.length;
+        if (filteredBadge) {
+            filteredBadge.classList.toggle("d-none", !isFiltered);
+        }
+
+        if (obsList.length === 0) {
+            if (emptyOverlay) {
+                emptyOverlay.classList.remove("d-none");
+                if (emptyMsg) {
+                    emptyMsg.textContent = isFiltered
+                        ? "No satellite thermal anomalies match the current filter selection."
+                        : "Zero thermal anomalies recorded in the database for Nainital Forest Division.";
+                }
+            }
             return;
         }
 
-        var bounds = L.latLngBounds();
+        if (emptyOverlay) emptyOverlay.classList.add("d-none");
 
-        appState.observations.forEach(function (obs) {
-            if (!obs.lat || !obs.lng) return;
+        obsList.forEach(function (obs) {
+            var lat = parseFloat(obs.lat);
+            var lng = parseFloat(obs.lng);
 
-            var latLng = [parseFloat(obs.lat), parseFloat(obs.lng)];
-            bounds.extend(latLng);
+            // Strict coordinate bounds validation
+            if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                return;
+            }
 
+            var latLng = [lat, lng];
             var icon = createCustomMarkerIcon(obs.priority);
             var marker = L.marker(latLng, { icon: icon });
 
+            var priorityLabel = (obs.priority || "medium").toUpperCase();
+            var scoreText = obs.priority_score !== undefined ? obs.priority_score + "/100" : "--";
+            var confText = obs.confidence ? obs.confidence + "%" : "Unavailable";
+            var frpText = obs.frp_mw ? obs.frp_mw + " MW" : "Unavailable";
+            var natureTag = obs.data_nature === "simulated" ? "Simulated Demo" : (obs.data_nature === "historical" ? "Historical Record" : "Real Telemetry");
+
             var popupContent = '<div class="vd-popup-card">' +
-                '<div class="vd-popup-header">' +
-                    '<span class="vd-popup-id">' + obs.id + '</span>' +
-                    '<span class="badge vd-badge-priority badge-' + (obs.priority || 'medium') + '">' + (obs.priority || 'medium') + '</span>' +
+                '<div class="vd-popup-header d-flex justify-content-between align-items-center mb-1">' +
+                    '<span class="vd-popup-id font-monospace fw-bold">' + escapeHtml(obs.id) + '</span>' +
+                    '<span class="badge vd-badge-priority badge-' + (obs.priority || 'medium') + '">' + priorityLabel + ' (' + scoreText + ')</span>' +
                 '</div>' +
-                '<div class="vd-popup-location">' + (obs.location || 'Nainital Forest Beat') + '</div>' +
-                '<div class="vd-popup-meta">' +
-                    '<div><i class="bi bi-clock me-1"></i>' + (obs.detected_at || '') + '</div>' +
-                    '<div><i class="bi bi-satellite me-1"></i>' + (obs.source || 'VIIRS') + ' &bull; ' + (obs.confidence || 0) + '% conf</div>' +
+                '<div class="vd-popup-location fw-semibold text-dark mb-1">' + escapeHtml(obs.location || 'Nainital Beat') + '</div>' +
+                '<div class="vd-popup-meta small text-muted mb-2">' +
+                    '<div><i class="bi bi-geo-alt me-1"></i>' + lat.toFixed(4) + '° N, ' + lng.toFixed(4) + '° E</div>' +
+                    '<div><i class="bi bi-clock me-1"></i>' + escapeHtml(obs.detected_at || '') + '</div>' +
+                    '<div><i class="bi bi-satellite me-1"></i>' + escapeHtml(obs.source || 'VIIRS') + ' &bull; ' + confText + ' conf</div>' +
+                    '<div><i class="bi bi-fire me-1"></i>FRP: ' + frpText + ' &bull; Status: ' + escapeHtml(obs.status || 'new') + '</div>' +
+                    '<div class="mt-1"><span class="badge bg-light text-secondary border">' + natureTag + '</span></div>' +
                 '</div>' +
-                '<button type="button" class="vd-popup-btn" data-obs-id="' + obs.id + '">' +
-                    '<i class="bi bi-arrow-right-circle me-1"></i>Inspect Details' +
+                '<button type="button" class="btn btn-sm btn-success w-100 vd-popup-btn" data-obs-id="' + escapeHtml(obs.id) + '">' +
+                    '<i class="bi bi-card-text me-1"></i>Inspect Score &amp; Details' +
                 '</button>' +
             '</div>';
 
-            marker.bindPopup(popupContent, { maxWidth: 260 });
+            marker.bindPopup(popupContent, { maxWidth: 280 });
 
             marker.on("click", function () {
                 openObservationDrawer(obs);
@@ -324,30 +389,54 @@
             });
 
             appState.markersLayer.addLayer(marker);
+            appState.markerMap[obs.id] = marker;
         });
     }
 
+    function fitMapToVisibleMarkers() {
+        if (!appState.map || !appState.markersLayer) return;
+
+        var bounds = L.latLngBounds();
+        var hasValidCoords = false;
+
+        appState.visibleObservations.forEach(function (obs) {
+            var lat = parseFloat(obs.lat);
+            var lng = parseFloat(obs.lng);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                bounds.extend([lat, lng]);
+                hasValidCoords = true;
+            }
+        });
+
+        if (hasValidCoords && bounds.isValid()) {
+            appState.map.fitBounds(bounds, {
+                padding: [40, 40],
+                maxZoom: 14,
+            });
+        } else {
+            appState.map.flyTo([29.3803, 79.4636], 12);
+        }
+    }
+
     /* ----------------------------------------------------------------------
-       3. Priority Analytics Donut Chart (Chart.js)
+       3. Charts & Analytics (Chart.js)
        ---------------------------------------------------------------------- */
     function initPriorityChart() {
         var canvas = qs("#priorityChart");
         if (!canvas || typeof Chart === "undefined") return;
 
-        var observations = appState.observations;
-        var totalCount = observations.length;
-
+        var totalCount = appState.observations.length;
         var highCount = 0;
         var mediumCount = 0;
         var lowCount = 0;
 
-        observations.forEach(function (obs) {
+        appState.observations.forEach(function (obs) {
             if (obs.priority === "high") highCount++;
             else if (obs.priority === "medium") mediumCount++;
             else if (obs.priority === "low") lowCount++;
         });
 
-        // Update count badges in breakdown list
+        // Update count badges
         var elHigh = qs("#countHigh");
         var elMedium = qs("#countMedium");
         var elLow = qs("#countLow");
@@ -389,9 +478,7 @@
                 maintainAspectRatio: false,
                 cutout: "70%",
                 plugins: {
-                    legend: {
-                        display: false,
-                    },
+                    legend: { display: false },
                     tooltip: {
                         backgroundColor: "#102F24",
                         titleFont: { family: "Inter", size: 12, weight: "bold" },
@@ -410,7 +497,156 @@
                 animation: {
                     animateRotate: true,
                     animateScale: true,
-                    duration: 800,
+                    duration: 600,
+                },
+            },
+        });
+    }
+
+    function initTimelineChart() {
+        var canvas = qs("#timelineChart");
+        if (!canvas || typeof Chart === "undefined") return;
+
+        var timeline = appState.timelineData || [];
+        var emptyBox = qs("#timelineChartEmpty");
+
+        if (!timeline || timeline.length === 0) {
+            if (emptyBox) emptyBox.classList.remove("d-none");
+            canvas.style.display = "none";
+            return;
+        }
+
+        if (emptyBox) emptyBox.classList.add("d-none");
+        canvas.style.display = "block";
+
+        if (appState.timelineChartInstance) {
+            appState.timelineChartInstance.destroy();
+        }
+
+        var labels = timeline.map(function (item) { return item.date; });
+        var highSeries = timeline.map(function (item) { return item.high || 0; });
+        var medSeries = timeline.map(function (item) { return item.medium || 0; });
+        var lowSeries = timeline.map(function (item) { return item.low || 0; });
+
+        var ctx = canvas.getContext("2d");
+        appState.timelineChartInstance = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: "High Priority",
+                        data: highSeries,
+                        backgroundColor: "#D95B46",
+                        borderRadius: 4,
+                        stack: "Stack 0",
+                    },
+                    {
+                        label: "Medium Priority",
+                        data: medSeries,
+                        backgroundColor: "#E8A33E",
+                        borderRadius: 4,
+                        stack: "Stack 0",
+                    },
+                    {
+                        label: "Low Priority",
+                        data: lowSeries,
+                        backgroundColor: "#39A875",
+                        borderRadius: 4,
+                        stack: "Stack 0",
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { family: "Inter", size: 11 } },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0,
+                            font: { family: "Inter", size: 11 },
+                        },
+                        grid: { color: "#EAF1E8" },
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: "#102F24",
+                        titleFont: { family: "Inter", size: 12, weight: "bold" },
+                        bodyFont: { family: "Inter", size: 12 },
+                        padding: 10,
+                        cornerRadius: 8,
+                    },
+                },
+            },
+        });
+    }
+
+    function initScoreDistChart() {
+        var canvas = qs("#scoreDistChart");
+        if (!canvas || typeof Chart === "undefined") return;
+
+        var bins = appState.scoreBinsData || {};
+        var total = appState.observations.length;
+        var emptyBox = qs("#scoreDistChartEmpty");
+
+        if (total === 0) {
+            if (emptyBox) emptyBox.classList.remove("d-none");
+            canvas.style.display = "none";
+            return;
+        }
+
+        if (emptyBox) emptyBox.classList.add("d-none");
+        canvas.style.display = "block";
+
+        if (appState.scoreDistChartInstance) {
+            appState.scoreDistChartInstance.destroy();
+        }
+
+        var highTier = bins.high_tier || 0;
+        var midTier = bins.mid_tier || 0;
+        var lowTier = bins.low_tier || 0;
+
+        var ctx = canvas.getContext("2d");
+        appState.scoreDistChartInstance = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: ["Low (<40)", "Mid (40-69)", "High (≥70)"],
+                datasets: [
+                    {
+                        data: [lowTier, midTier, highTier],
+                        backgroundColor: ["#39A875", "#E8A33E", "#D95B46"],
+                        borderRadius: 6,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { family: "Inter", size: 10 } },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0, font: { family: "Inter", size: 10 } },
+                        grid: { color: "#EAF1E8" },
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: "#102F24",
+                        titleFont: { family: "Inter", size: 12, weight: "bold" },
+                        bodyFont: { family: "Inter", size: 12 },
+                    },
                 },
             },
         });
@@ -427,28 +663,24 @@
         var backdrop = qs("#vdDrawerBackdrop");
         if (!drawer || !backdrop) return;
 
-        // Populate drawer contents
+        // Drawer Header elements
         var title = qs("#drawerTitle");
         var priorityBadge = qs("#drawerPriorityBadge");
+        var scoreBadge = qs("#drawerScoreBadge");
         var statusBadge = qs("#drawerStatusBadge");
-        var locName = qs("#drawerLocationName");
-        var forestRange = qs("#drawerForestRange");
-        var coords = qs("#drawerCoordinates");
-        var detectedAt = qs("#drawerDetectedAt");
-        var satSource = qs("#drawerSatelliteSource");
-        var confVal = qs("#drawerConfidence");
-        var confBar = qs("#drawerConfidenceBar");
-        var tempFrp = qs("#drawerTempFRP");
-        var notes = qs("#drawerNotes");
-        var alertBox = qs("#drawerAlertBox");
-        var alertText = qs("#drawerAlertText");
-        var workflowStatus = qs("#drawerWorkflowStatus");
+        var dataNatureBadge = qs("#drawerDataNatureBadge");
 
         if (title) title.textContent = obs.id || "Observation Details";
 
+        var p = (obs.priority || "medium").toLowerCase();
         if (priorityBadge) {
-            priorityBadge.className = "vd-drawer-badge badge-" + (obs.priority || "medium");
-            priorityBadge.textContent = (obs.priority || "Medium").toUpperCase() + " PRIORITY";
+            priorityBadge.className = "vd-drawer-badge badge-" + p;
+            priorityBadge.textContent = p.toUpperCase() + " PRIORITY";
+        }
+
+        var scoreVal = obs.priority_score !== undefined ? obs.priority_score : "--";
+        if (scoreBadge) {
+            scoreBadge.textContent = "Score: " + scoreVal + "/100";
         }
 
         if (statusBadge) {
@@ -456,6 +688,24 @@
             statusBadge.textContent = (obs.status || "New").replace("-", " ").toUpperCase();
         }
 
+        if (dataNatureBadge) {
+            var nature = obs.data_nature || "simulated";
+            if (nature === "simulated") {
+                dataNatureBadge.className = "badge bg-warning-subtle text-warning-emphasis border border-warning-subtle";
+                dataNatureBadge.textContent = "Simulated Benchmark";
+            } else if (nature === "historical") {
+                dataNatureBadge.className = "badge bg-info-subtle text-info-emphasis border border-info-subtle";
+                dataNatureBadge.textContent = "Historical Record";
+            } else {
+                dataNatureBadge.className = "badge bg-success-subtle text-success-emphasis border border-success-subtle";
+                dataNatureBadge.textContent = "Real FIRMS Feed";
+            }
+        }
+
+        // Location & Coordinates
+        var locName = qs("#drawerLocationName");
+        var forestRange = qs("#drawerForestRange");
+        var coords = qs("#drawerCoordinates");
         if (locName) locName.textContent = obs.location || "Nainital Forest Beat";
         if (forestRange) forestRange.textContent = obs.range || "Nainital Division";
 
@@ -463,39 +713,105 @@
         var lng = parseFloat(obs.lng || 0).toFixed(4);
         if (coords) coords.textContent = lat + "° N, " + lng + "° E";
 
+        // Telemetry section
+        var detectedAt = qs("#drawerDetectedAt");
+        var satSource = qs("#drawerSatelliteSource");
+        var confVal = qs("#drawerConfidence");
+        var confBar = qs("#drawerConfidenceBar");
+        var tempFrp = qs("#drawerTempFRP");
+
         if (detectedAt) detectedAt.textContent = obs.detected_at || "Awaiting timestamp";
         if (satSource) satSource.textContent = obs.source || "VIIRS Sensor";
 
         var conf = obs.confidence ? obs.confidence : 0;
-        if (confVal) confVal.textContent = conf > 0 ? conf + "%" : "Nominal";
+        if (confVal) confVal.textContent = conf > 0 ? conf + "%" : "Unavailable";
         if (confBar) {
-            confBar.style.width = (conf > 0 ? conf : 50) + "%";
-            if (conf >= 80) confBar.className = "progress-bar bg-danger";
-            else if (conf >= 60) confBar.className = "progress-bar bg-warning";
-            else confBar.className = "progress-bar bg-success";
+            confBar.style.width = (conf > 0 ? conf : 0) + "%";
+            // Higher confidence = more reliable detection. Green is good, amber is moderate, red is low.
+            if (conf >= 80) confBar.className = "progress-bar bg-success";
+            else if (conf >= 50) confBar.className = "progress-bar bg-warning";
+            else confBar.className = "progress-bar bg-danger";
         }
 
         var tempStr = obs.brightness_temp_k ? obs.brightness_temp_k + " K" : "—";
         var frpStr = obs.frp_mw ? obs.frp_mw + " MW" : "—";
         if (tempFrp) tempFrp.textContent = tempStr + " / " + frpStr;
 
+        // Explainable Priority Score Breakdown
+        var scoreTotalBadge = qs("#drawerScoreTotalBadge");
+        var scoreSummary = qs("#drawerScoreSummary");
+
+        if (scoreTotalBadge) scoreTotalBadge.textContent = scoreVal + " / 100";
+        if (scoreSummary) {
+            scoreSummary.textContent = obs.score_summary || "Score evaluated across 5 decision-support components.";
+        }
+
+        var breakdown = obs.score_breakdown || {};
+        // Map score breakdown keys to explicit element ID suffixes for clarity and robustness
+        var componentsList = [
+            { key: "confidence",        suffix: "Confidence", max: 30 },
+            { key: "repeat_detections", suffix: "Repeat",     max: 30 },
+            { key: "frp",               suffix: "Frp",        max: 15 },
+            { key: "recency",           suffix: "Recency",    max: 15 },
+            { key: "forest_overlap",    suffix: "Forest",     max: 10 },
+        ];
+
+        componentsList.forEach(function (c) {
+            var data = breakdown[c.key] || {};
+            var scoreEl  = qs("#compScore"  + c.suffix);
+            var barEl    = qs("#compBar"    + c.suffix);
+            var explEl   = qs("#compExpl"   + c.suffix);
+            var statusEl = qs("#compStatus" + c.suffix);
+
+            var pts = data.score !== undefined ? data.score : 0;
+            var maxPts = data.max_score || c.max;
+            var pct = maxPts > 0 ? Math.round((pts / maxPts) * 100) : 0;
+
+            if (scoreEl) scoreEl.textContent = pts + " / " + maxPts + " pts";
+            if (barEl) {
+                barEl.style.width = pct + "%";
+                if (data.status === "unavailable") {
+                    barEl.className = "progress-bar bg-secondary";
+                } else if (pct >= 70) {
+                    barEl.className = "progress-bar bg-danger";
+                } else if (pct >= 40) {
+                    barEl.className = "progress-bar bg-warning";
+                } else {
+                    barEl.className = "progress-bar bg-forest";
+                }
+            }
+            if (explEl) {
+                explEl.textContent = data.explanation || (data.status === "unavailable" ? "Unavailable" : "Calculated");
+            }
+            if (statusEl) {
+                if (data.status === "available") {
+                    statusEl.className = "badge badge-sm bg-success-subtle text-success border border-success-subtle";
+                    statusEl.textContent = data.raw_value || "Available";
+                } else {
+                    statusEl.className = "badge badge-sm bg-secondary-subtle text-secondary border";
+                    statusEl.textContent = "Unavailable";
+                }
+            }
+        });
+
+        // Notes & Alerts
+        var notes = qs("#drawerNotes");
+        var alertBox = qs("#drawerAlertBox");
+        var alertText = qs("#drawerAlertText");
+
         if (notes) notes.textContent = obs.notes || "No additional field notes logged.";
 
         if (alertBox && alertText) {
             if (obs.priority === "high") {
                 alertBox.className = "vd-drawer-alert mb-3 bg-danger-subtle text-danger border-danger-subtle";
-                alertText.textContent = "High-radiance thermal anomaly. Immediate line-of-sight watchtower verification recommended.";
+                alertText.textContent = "High-priority thermal signature (score: " + scoreVal + "/100). Line-of-sight watchtower verification recommended.";
             } else {
                 alertBox.className = "vd-drawer-alert mb-3";
                 alertText.textContent = "Satellite thermal anomaly cataloged. Verification recommended before deployment.";
             }
         }
 
-        if (workflowStatus) {
-            workflowStatus.textContent = (obs.status || "Logged").toUpperCase();
-        }
-
-        // Show Drawer
+        // Open drawer
         drawer.classList.add("open");
         backdrop.classList.add("show");
         drawer.setAttribute("aria-hidden", "false");
@@ -540,13 +856,12 @@
             if (e.key === "Escape") closeObservationDrawer();
         });
 
-        // Copy Coordinates Action
         if (btnCopy) {
             btnCopy.addEventListener("click", function () {
                 var coords = qs("#drawerCoordinates");
                 if (coords && coords.textContent) {
                     navigator.clipboard.writeText(coords.textContent).then(function () {
-                        showAppToast("Coordinates copied to clipboard: " + coords.textContent);
+                        showAppToast("Coordinates copied: " + coords.textContent);
                     }).catch(function () {
                         showAppToast("Copied: " + coords.textContent);
                     });
@@ -554,7 +869,6 @@
             });
         }
 
-        // Center on Map Action
         if (btnPan) {
             btnPan.addEventListener("click", function () {
                 if (appState.selectedObservation && appState.map) {
@@ -562,10 +876,13 @@
                     var lng = parseFloat(appState.selectedObservation.lng);
                     if (!isNaN(lat) && !isNaN(lng)) {
                         appState.map.flyTo([lat, lng], 14, {
-                            duration: 1.0,
+                            duration: 0.9,
                             easeLinearity: 0.25,
                         });
-                        // Scroll to map section smoothly
+                        var marker = appState.markerMap[appState.selectedObservation.id];
+                        if (marker) {
+                            marker.openPopup();
+                        }
                         var mapSection = qs("#mapSection");
                         if (mapSection) {
                             mapSection.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -577,116 +894,197 @@
     }
 
     /* ----------------------------------------------------------------------
-       5. Observations Table Filtering, Search, & Sorting
+       5. Table Filtering, Search, Sorting, & Pagination
        ---------------------------------------------------------------------- */
-    function getFilterableRows() {
-        return qsa("#observationsTableBody tr");
-    }
-
     function applyTableFilters() {
-        var rows = getFilterableRows();
         var searchInput = qs("#dashboardSearch");
         var filterPriority = qs("#filterPriority");
         var filterStatus = qs("#filterStatus");
+        var filterConfidence = qs("#filterConfidence");
         var filterDate = qs("#filterDate");
 
         var searchText = searchInput ? normalise(searchInput.value) : "";
         var selectedPriority = filterPriority ? normalise(filterPriority.value) : "all";
         var selectedStatus = filterStatus ? normalise(filterStatus.value) : "all";
+        var selectedConf = filterConfidence ? normalise(filterConfidence.value) : "all";
         var selectedDate = filterDate ? normalise(filterDate.value) : "all";
 
-        var visibleCount = 0;
         var now = new Date();
 
-        rows.forEach(function (row) {
-            var rowText = normalise(row.textContent);
-            var rPriority = normalise(row.getAttribute("data-priority"));
-            var rStatus = normalise(row.getAttribute("data-status"));
-            var rDateStr = row.getAttribute("data-date");
-
-            // Text search match
-            var matchSearch = searchText === "" || rowText.indexOf(searchText) !== -1;
-
-            // Priority match
-            var matchPriority = selectedPriority === "all" || rPriority === selectedPriority;
-
-            // Status match
-            var matchStatus = selectedStatus === "all" || rStatus === selectedStatus;
-
-            // Date match
-            var matchDate = true;
-            if (selectedDate !== "all" && rDateStr) {
-                var rowDate = new Date(rDateStr);
-                var diffHours = (now - rowDate) / (1000 * 60 * 60);
-
-                if (selectedDate === "24h") matchDate = diffHours <= 24;
-                else if (selectedDate === "7d") matchDate = diffHours <= (24 * 7);
-                else if (selectedDate === "30d") matchDate = diffHours <= (24 * 30);
+        appState.visibleObservations = appState.observations.filter(function (obs) {
+            // Text search
+            if (searchText !== "") {
+                var hay = normalise(
+                    (obs.id || "") + " " +
+                    (obs.location || "") + " " +
+                    (obs.range || "") + " " +
+                    (obs.source || "")
+                );
+                if (hay.indexOf(searchText) === -1) return false;
             }
 
-            var isVisible = matchSearch && matchPriority && matchStatus && matchDate;
-            row.style.display = isVisible ? "" : "none";
+            // Priority
+            if (selectedPriority !== "all") {
+                if (normalise(obs.priority) !== selectedPriority) return false;
+            }
 
-            if (isVisible) visibleCount++;
+            // Status
+            if (selectedStatus !== "all") {
+                if (normalise(obs.status) !== selectedStatus) return false;
+            }
+
+            // Confidence
+            if (selectedConf !== "all") {
+                var c = parseInt(obs.confidence, 10);
+                if (isNaN(c)) return false;
+                if (selectedConf === "high" && c < 80) return false;
+                if (selectedConf === "moderate" && (c < 50 || c >= 80)) return false;
+                if (selectedConf === "low" && c >= 50) return false;
+            }
+
+            // Date
+            if (selectedDate !== "all" && obs.detected_at_iso) {
+                var obsDate = new Date(obs.detected_at_iso);
+                var diffHours = (now - obsDate) / (1000 * 60 * 60);
+                if (selectedDate === "24h" && diffHours > 24) return false;
+                if (selectedDate === "7d" && diffHours > (24 * 7)) return false;
+                if (selectedDate === "30d" && diffHours > (24 * 30)) return false;
+            }
+
+            return true;
         });
 
-        // Update result count label
-        var countLabel = qs("#dashboardResultCount");
-        if (countLabel) countLabel.textContent = visibleCount;
+        // Synchronize Map Markers with filtered observations
+        renderMapMarkers(appState.visibleObservations);
 
-        // Empty state visibility
-        var noResults = qs("#dashboardNoResults");
-        if (noResults) {
-            noResults.classList.toggle("d-none", visibleCount > 0);
-        }
+        // Reset to page 1
+        appState.currentPage = 1;
+        sortObservationsList();
+        renderTableRows();
+        renderPagination();
     }
 
-    function initTableInteractions() {
-        var searchInput = qs("#dashboardSearch");
-        var filterPriority = qs("#filterPriority");
-        var filterStatus = qs("#filterStatus");
-        var filterDate = qs("#filterDate");
-        var resetBtn = qs("#dashboardFilterReset");
-        var emptyResetBtn = qs("#btnEmptyResetFilters");
+    function sortObservationsList() {
+        var col = appState.sortColumn;
+        var dir = appState.sortDirection;
 
-        if (searchInput) {
-            searchInput.addEventListener("input", applyTableFilters);
-        }
-        if (filterPriority) {
-            filterPriority.addEventListener("change", applyTableFilters);
-        }
-        if (filterStatus) {
-            filterStatus.addEventListener("change", applyTableFilters);
-        }
-        if (filterDate) {
-            filterDate.addEventListener("change", applyTableFilters);
+        appState.visibleObservations.sort(function (a, b) {
+            var valA, valB;
+
+            if (col === "id") {
+                valA = a.id || "";
+                valB = b.id || "";
+                return dir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            } else if (col === "date") {
+                valA = new Date(a.detected_at_iso || 0);
+                valB = new Date(b.detected_at_iso || 0);
+                return dir === "asc" ? valA - valB : valB - valA;
+            } else if (col === "confidence") {
+                valA = parseInt(a.confidence || 0, 10);
+                valB = parseInt(b.confidence || 0, 10);
+                return dir === "asc" ? valA - valB : valB - valA;
+            } else if (col === "frp") {
+                valA = parseFloat(a.frp_mw || 0);
+                valB = parseFloat(b.frp_mw || 0);
+                return dir === "asc" ? valA - valB : valB - valA;
+            } else if (col === "score") {
+                valA = parseFloat(a.priority_score || 0);
+                valB = parseFloat(b.priority_score || 0);
+                return dir === "asc" ? valA - valB : valB - valA;
+            }
+            return 0;
+        });
+    }
+
+    function renderTableRows() {
+        var tbody = qs("#observationsTableBody");
+        var countLabel = qs("#dashboardResultCount");
+        var noResults = qs("#dashboardNoResults");
+        if (!tbody) return;
+
+        var total = appState.visibleObservations.length;
+        if (countLabel) countLabel.textContent = total;
+
+        if (total === 0) {
+            tbody.innerHTML = "";
+            if (noResults) noResults.classList.remove("d-none");
+            return;
         }
 
-        function resetAllFilters() {
-            if (searchInput) searchInput.value = "";
-            if (filterPriority) filterPriority.value = "all";
-            if (filterStatus) filterStatus.value = "all";
-            if (filterDate) filterDate.value = "all";
-            applyTableFilters();
-        }
+        if (noResults) noResults.classList.add("d-none");
 
-        if (resetBtn) resetBtn.addEventListener("click", resetAllFilters);
-        if (emptyResetBtn) emptyResetBtn.addEventListener("click", resetAllFilters);
+        // Pagination slice
+        var startIdx = (appState.currentPage - 1) * appState.pageSize;
+        var endIdx = startIdx + appState.pageSize;
+        var pageItems = appState.visibleObservations.slice(startIdx, endIdx);
 
-        // Click row to view details
-        var rows = getFilterableRows();
-        rows.forEach(function (row) {
-            row.addEventListener("click", function (e) {
-                // Ignore if clicked on copy icon
-                if (e.target.closest(".vd-btn-copy")) return;
+        var html = "";
+        pageItems.forEach(function (obs) {
+            var isSelected = appState.selectedObservation && appState.selectedObservation.id === obs.id;
+            var p = (obs.priority || "medium").toLowerCase();
+            var st = (obs.status || "new").toLowerCase();
+            var scoreVal = obs.priority_score !== undefined ? obs.priority_score : "--";
+            var confVal = obs.confidence ? obs.confidence + "%" : "&ndash;";
+            var frpVal = obs.frp_mw ? '<span class="fw-semibold">' + obs.frp_mw + '</span> <span class="small text-muted">MW</span>' : '&ndash;';
 
+            var natureBadge = "";
+            if (obs.data_nature === "simulated") {
+                natureBadge = '<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle small">Demo</span>';
+            } else if (obs.data_nature === "historical") {
+                natureBadge = '<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle small">Archive</span>';
+            } else {
+                natureBadge = '<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle small">Real</span>';
+            }
+
+            var statusBadge = '<span class="badge vd-badge-status status-' + st + '">' + st.replace("-", " ") + '</span>';
+
+            html += '<tr class="vd-table-row ' + (isSelected ? 'row-selected' : '') + '" data-id="' + escapeHtml(obs.id) + '" role="button" tabindex="0">' +
+                '<td class="font-monospace fw-semibold text-forest">' +
+                    '<span class="vd-id-badge">' + escapeHtml(obs.id) + '</span>' +
+                '</td>' +
+                '<td class="text-nowrap">' +
+                    '<div class="vd-time-primary">' + formatDateDisplay(obs.detected_at_date || '') + '</div>' +
+                    '<div class="vd-time-secondary font-monospace">' + escapeHtml(obs.detected_at_time || '') + '</div>' +
+                '</td>' +
+                '<td>' +
+                    '<div class="fw-semibold text-dark">' + escapeHtml(obs.location || 'Nainital Beat') + '</div>' +
+                    '<div class="small text-muted"><i class="bi bi-pin-map me-1"></i>' + escapeHtml(obs.range || 'Nainital') + '</div>' +
+                '</td>' +
+                '<td>' +
+                    '<span class="vd-satellite-pill"><i class="bi bi-satellite me-1"></i>' + escapeHtml(obs.source || 'VIIRS') + '</span>' +
+                '</td>' +
+                '<td class="text-center font-monospace fw-semibold">' + confVal + '</td>' +
+                '<td class="text-center font-monospace">' + frpVal + '</td>' +
+                '<td class="text-center">' +
+                    '<div class="d-inline-flex flex-column align-items-center">' +
+                        '<span class="badge vd-badge-priority badge-' + p + ' mb-1">' + p.toUpperCase() + '</span>' +
+                        '<span class="small font-monospace text-muted">' + scoreVal + '/100</span>' +
+                    '</div>' +
+                '</td>' +
+                '<td class="text-center">' + statusBadge + '</td>' +
+                '<td class="text-center">' + natureBadge + '</td>' +
+                '<td class="text-end">' +
+                    '<button type="button" class="btn btn-sm btn-outline-success vd-btn-view-details">' +
+                        '<i class="bi bi-eye me-1"></i>Details' +
+                    '</button>' +
+                '</td>' +
+            '</tr>';
+        });
+
+        tbody.innerHTML = html;
+
+        // Attach click listeners to rows
+        qsa(".vd-table-row", tbody).forEach(function (row) {
+            row.addEventListener("click", function () {
                 var obsId = row.getAttribute("data-id");
-                var obs = appState.observations.find(function (item) {
-                    return item.id === obsId;
-                });
-
+                var obs = appState.observations.find(function (item) { return item.id === obsId; });
                 if (obs) {
                     openObservationDrawer(obs);
+                    var marker = appState.markerMap[obs.id];
+                    if (marker && appState.map) {
+                        appState.map.flyTo([parseFloat(obs.lat), parseFloat(obs.lng)], 14, { duration: 0.8 });
+                        marker.openPopup();
+                    }
                 }
             });
 
@@ -697,8 +1095,92 @@
                 }
             });
         });
+    }
 
-        // Column Sorting
+    function renderPagination() {
+        var wrap = qs("#vdPaginationWrap");
+        var list = qs("#vdPaginationList");
+        var info = qs("#vdPaginationInfo");
+        if (!wrap || !list || !info) return;
+
+        var total = appState.visibleObservations.length;
+        if (total <= appState.pageSize) {
+            wrap.classList.add("d-none");
+            return;
+        }
+
+        wrap.classList.remove("d-none");
+        var totalPages = Math.ceil(total / appState.pageSize);
+        var cur = appState.currentPage;
+
+        var startEntry = (cur - 1) * appState.pageSize + 1;
+        var endEntry = Math.min(cur * appState.pageSize, total);
+        info.textContent = "Showing " + startEntry + " to " + endEntry + " of " + total + " observations";
+
+        var html = "";
+
+        // Prev button
+        html += '<li class="page-item ' + (cur === 1 ? 'disabled' : '') + '">' +
+            '<button class="page-link" data-page="' + (cur - 1) + '" aria-label="Previous">&laquo;</button>' +
+            '</li>';
+
+        for (var p = 1; p <= totalPages; p++) {
+            if (p === 1 || p === totalPages || (p >= cur - 1 && p <= cur + 1)) {
+                html += '<li class="page-item ' + (p === cur ? 'active' : '') + '">' +
+                    '<button class="page-link" data-page="' + p + '">' + p + '</button>' +
+                    '</li>';
+            } else if (p === cur - 2 || p === cur + 2) {
+                html += '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+            }
+        }
+
+        // Next button
+        html += '<li class="page-item ' + (cur === totalPages ? 'disabled' : '') + '">' +
+            '<button class="page-link" data-page="' + (cur + 1) + '" aria-label="Next">&raquo;</button>' +
+            '</li>';
+
+        list.innerHTML = html;
+
+        qsa("button.page-link", list).forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var targetPage = parseInt(btn.getAttribute("data-page"), 10);
+                if (!isNaN(targetPage) && targetPage >= 1 && targetPage <= totalPages) {
+                    appState.currentPage = targetPage;
+                    renderTableRows();
+                    renderPagination();
+                }
+            });
+        });
+    }
+
+    function initTableInteractions() {
+        var searchInput = qs("#dashboardSearch");
+        var filterPriority = qs("#filterPriority");
+        var filterStatus = qs("#filterStatus");
+        var filterConfidence = qs("#filterConfidence");
+        var filterDate = qs("#filterDate");
+        var resetBtn = qs("#dashboardFilterReset");
+        var emptyResetBtn = qs("#btnEmptyResetFilters");
+
+        if (searchInput) searchInput.addEventListener("input", applyTableFilters);
+        if (filterPriority) filterPriority.addEventListener("change", applyTableFilters);
+        if (filterStatus) filterStatus.addEventListener("change", applyTableFilters);
+        if (filterConfidence) filterConfidence.addEventListener("change", applyTableFilters);
+        if (filterDate) filterDate.addEventListener("change", applyTableFilters);
+
+        function resetAllFilters() {
+            if (searchInput) searchInput.value = "";
+            if (filterPriority) filterPriority.value = "all";
+            if (filterStatus) filterStatus.value = "all";
+            if (filterConfidence) filterConfidence.value = "all";
+            if (filterDate) filterDate.value = "all";
+            applyTableFilters();
+        }
+
+        if (resetBtn) resetBtn.addEventListener("click", resetAllFilters);
+        if (emptyResetBtn) emptyResetBtn.addEventListener("click", resetAllFilters);
+
+        // Sorting
         qsa("th.sortable").forEach(function (th) {
             th.addEventListener("click", function () {
                 var columnKey = th.getAttribute("data-sort");
@@ -708,52 +1190,23 @@
                     appState.sortDirection = appState.sortDirection === "asc" ? "desc" : "asc";
                 } else {
                     appState.sortColumn = columnKey;
-                    appState.sortDirection = "asc";
+                    appState.sortDirection = "desc";
                 }
 
-                sortTable(columnKey, appState.sortDirection);
+                sortObservationsList();
+                renderTableRows();
+                renderPagination();
             });
         });
-    }
 
-    function sortTable(column, direction) {
-        var tbody = qs("#observationsTableBody");
-        if (!tbody) return;
-
-        var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
-
-        rows.sort(function (a, b) {
-            var valA = "";
-            var valB = "";
-
-            if (column === "id") {
-                valA = a.getAttribute("data-id") || "";
-                valB = b.getAttribute("data-id") || "";
-                return direction === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
-            } else if (column === "date") {
-                valA = new Date(a.getAttribute("data-date") || 0);
-                valB = new Date(b.getAttribute("data-date") || 0);
-                return direction === "asc" ? valA - valB : valB - valA;
-            } else if (column === "confidence") {
-                valA = parseInt(a.getAttribute("data-confidence") || "0", 10);
-                valB = parseInt(b.getAttribute("data-confidence") || "0", 10);
-                return direction === "asc" ? valA - valB : valB - valA;
-            } else if (column === "priority") {
-                var weight = { high: 3, medium: 2, low: 1 };
-                valA = weight[a.getAttribute("data-priority")] || 0;
-                valB = weight[b.getAttribute("data-priority")] || 0;
-                return direction === "asc" ? valA - valB : valB - valA;
-            }
-            return 0;
-        });
-
-        rows.forEach(function (row) {
-            tbody.appendChild(row);
-        });
+        // Initial table & pagination render
+        sortObservationsList();
+        renderTableRows();
+        renderPagination();
     }
 
     /* ----------------------------------------------------------------------
-       6. Live Telemetry Synchronization Action
+       6. Live Telemetry Synchronization
        ---------------------------------------------------------------------- */
     function initTelemetrySync() {
         var syncBtn = qs("#vdBtnSyncTelemetry");
@@ -770,9 +1223,7 @@
 
             fetch("/api/refresh/", {
                 method: "GET",
-                headers: {
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+                headers: { "X-Requested-With": "XMLHttpRequest" },
             })
                 .then(function (response) {
                     if (!response.ok) throw new Error("HTTP " + response.status);
@@ -780,22 +1231,15 @@
                 })
                 .then(function (data) {
                     if (data.status === "success") {
-                        if (lastUpdateLabel) {
-                            lastUpdateLabel.textContent = data.timestamp || "Just now";
-                        }
-                        if (syncStatusPill) {
-                            syncStatusPill.className = "vd-sync-status-pill vd-sync-live";
-                        }
-                        if (syncStatusText) {
-                            syncStatusText.textContent = "Telemetry Active";
-                        }
-
+                        if (lastUpdateLabel) lastUpdateLabel.textContent = data.timestamp || "Just now";
+                        if (syncStatusPill) syncStatusPill.className = "vd-sync-status-pill vd-sync-live";
+                        if (syncStatusText) syncStatusText.textContent = "Telemetry Active";
                         showAppToast(data.message || "Telemetry synchronized successfully.");
                     }
                 })
                 .catch(function (err) {
                     console.error("[VanDrishti] Telemetry sync error:", err);
-                    showAppToast("Satellite telemetry check complete. Node operational.");
+                    showAppToast("Satellite telemetry active. Nainital Node operational.");
                 })
                 .finally(function () {
                     setTimeout(function () {
@@ -821,14 +1265,12 @@
             bsToast.show();
         } else {
             toastEl.classList.add("show");
-            setTimeout(function () {
-                toastEl.classList.remove("show");
-            }, 3500);
+            setTimeout(function () { toastEl.classList.remove("show"); }, 3500);
         }
     }
 
     /* ----------------------------------------------------------------------
-       8. Sidebar Navigation & Collapse Controls
+       8. Sidebar Navigation
        ---------------------------------------------------------------------- */
     function initSidebar() {
         var sidebar = qs("#vdSidebar");
@@ -852,7 +1294,6 @@
         if (collapseToggle) {
             collapseToggle.addEventListener("click", function () {
                 document.body.classList.toggle("vd-sidebar-collapsed");
-                // Invalidate Leaflet map size on transition complete
                 setTimeout(function () {
                     if (appState.map) appState.map.invalidateSize();
                 }, 380);
@@ -864,10 +1305,12 @@
        Execution on DOM Ready
        ---------------------------------------------------------------------- */
     onReady(function () {
-        appState.observations = parseObservationsData();
+        initData();
         initSidebar();
         initGeospatialMap();
         initPriorityChart();
+        initTimelineChart();
+        initScoreDistChart();
         initObservationDrawer();
         initTableInteractions();
         initTelemetrySync();

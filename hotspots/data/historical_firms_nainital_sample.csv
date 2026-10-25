@@ -1,0 +1,7 @@
+observation_id,latitude,longitude,observation_time,confidence,frp,satellite_source,location_name,forest_range,status,data_nature,notes
+VD-HIST-2025-101,29.3845,79.4560,2025-05-18T08:24:00Z,84,9.6,VIIRS (Suomi-NPP),Snow View - Lariakanta Ridge,Nainital Central Range,closed,historical,Historical May 2025 pre-monsoon dry season fire anomaly. Extinguished by beat team.
+VD-HIST-2025-102,29.3402,79.4815,2025-05-18T08:24:00Z,68,6.1,MODIS (Aqua),Jyolikote Descent,Nainital South Range,closed,historical,Historical underbrush burn along Kathgodam-Nainital road corridor.
+VD-HIST-2025-103,29.4180,79.4750,2025-05-19T07:45:00Z,91,13.4,VIIRS (NOAA-20),Pangot Valley Trail,Kilbury Oak Forest Range,closed,historical,Historical lightning strike ignition in upper oak-rhododendron forest.
+VD-HIST-2025-104,29.3690,79.5120,2025-05-20T11:30:00Z,58,4.3,MODIS (Terra),Ramgarh Apple Orchard Border,Ramgarh Forest Range,closed,historical,Controlled boundary biomass clearing by local cooperative.
+VD-HIST-2025-105,29.3920,79.4350,2025-05-21T09:15:00Z,78,8.2,VIIRS (Suomi-NPP),Camel's Back Spur,Nainital Central Range,closed,historical,Pine needle litter burn contained along municipal fire break.
+VD-HIST-2025-106,29.3550,79.4480,2025-05-22T08:00:00Z,42,2.1,MODIS (Aqua),Khurpatal Overlook,Nainital South Range,closed,historical,Low-confidence false thermal anomaly caused by bare rock heating.

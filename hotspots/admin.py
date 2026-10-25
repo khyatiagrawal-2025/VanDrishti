@@ -10,11 +10,12 @@ class ObservationAdmin(admin.ModelAdmin):
         "forest_range",
         "priority",
         "status",
+        "data_nature",
         "detected_at",
         "satellite_source",
         "confidence",
     )
-    list_filter = ("priority", "status", "satellite_source", "forest_range")
+    list_filter = ("priority", "status", "data_nature", "satellite_source", "forest_range")
     search_fields = ("observation_id", "location_name", "forest_range", "notes")
     ordering = ("-detected_at",)
 

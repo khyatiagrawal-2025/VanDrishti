@@ -181,9 +181,15 @@
     <aside class="vd-drawer" id="vdObservationDrawer" role="dialog" aria-labelledby="drawerTitle" aria-hidden="true">
         <div class="vd-drawer-header">
             <div class="vd-drawer-header-info">
-                <span class="vd-drawer-badge" id="drawerPriorityBadge">High Priority</span>
-                <span class="vd-drawer-status-badge" id="drawerStatusBadge">Under Review</span>
-                <h2 class="vd-drawer-title" id="drawerTitle">Observation Details</h2>
+                <div class="d-flex align-items-center gap-1 mb-1">
+                    <span class="vd-drawer-badge" id="drawerPriorityBadge">High Priority</span>
+                    <span class="badge bg-dark-subtle text-dark" id="drawerScoreBadge">Score: --/100</span>
+                    <span class="vd-drawer-status-badge" id="drawerStatusBadge">Under Review</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <h2 class="vd-drawer-title mb-0" id="drawerTitle">Observation Details</h2>
+                    <span class="badge bg-secondary-subtle text-secondary" id="drawerDataNatureBadge">Simulated</span>
+                </div>
             </div>
             <button class="vd-drawer-close-btn" id="vdDrawerCloseBtn" aria-label="Close details drawer">
                 <i class="bi bi-x-lg"></i>
@@ -259,6 +265,102 @@
                 </div>
             </div>
 
+            <!-- Explainable Priority Score Breakdown Card -->
+            <div class="vd-drawer-card mb-3" id="drawerScoreCard">
+                <div class="vd-drawer-card-title d-flex justify-content-between align-items-center mb-1">
+                    <div>
+                        <i class="bi bi-calculator me-2 text-forest"></i>Explainable Priority Score
+                    </div>
+                    <span class="badge bg-forest text-white font-monospace" id="drawerScoreTotalBadge">-- / 100</span>
+                </div>
+                <p class="small text-muted mb-3" id="drawerScoreSummary">
+                    Score calculated from prototype decision-support components.
+                </p>
+
+                <!-- 5 Component Progress Bars -->
+                <div class="vd-score-components-list">
+                    <!-- Component 1: Confidence (30%) -->
+                    <div class="vd-score-component-item mb-2" id="compConfidence">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold">1. Sensor Confidence (30%)</span>
+                            <span class="small font-monospace" id="compScoreConfidence">-- / 30 pts</span>
+                        </div>
+                        <div class="progress" style="height: 6px; background: #EAF1E8;">
+                            <div class="progress-bar bg-forest" id="compBarConfidence" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="small text-muted" id="compExplConfidence">--</span>
+                            <span class="badge badge-sm bg-light text-secondary border" id="compStatusConfidence">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Component 2: Nearby Repeat Detections (30%) -->
+                    <div class="vd-score-component-item mb-2" id="compRepeat">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold">2. Cluster Repeat Detections (30%)</span>
+                            <span class="small font-monospace" id="compScoreRepeat">-- / 30 pts</span>
+                        </div>
+                        <div class="progress" style="height: 6px; background: #EAF1E8;">
+                            <div class="progress-bar bg-forest" id="compBarRepeat" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="small text-muted" id="compExplRepeat">--</span>
+                            <span class="badge badge-sm bg-light text-secondary border" id="compStatusRepeat">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Component 3: Fire Radiative Power (15%) -->
+                    <div class="vd-score-component-item mb-2" id="compFrp">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold">3. Fire Radiative Power (15%)</span>
+                            <span class="small font-monospace" id="compScoreFrp">-- / 15 pts</span>
+                        </div>
+                        <div class="progress" style="height: 6px; background: #EAF1E8;">
+                            <div class="progress-bar bg-forest" id="compBarFrp" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="small text-muted" id="compExplFrp">--</span>
+                            <span class="badge badge-sm bg-light text-secondary border" id="compStatusFrp">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Component 4: Recency (15%) -->
+                    <div class="vd-score-component-item mb-2" id="compRecency">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold">4. Detection Recency (15%)</span>
+                            <span class="small font-monospace" id="compScoreRecency">-- / 15 pts</span>
+                        </div>
+                        <div class="progress" style="height: 6px; background: #EAF1E8;">
+                            <div class="progress-bar bg-forest" id="compBarRecency" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="small text-muted" id="compExplRecency">--</span>
+                            <span class="badge badge-sm bg-light text-secondary border" id="compStatusRecency">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Component 5: Forest-Area Overlap (10%) -->
+                    <div class="vd-score-component-item mb-2" id="compForest">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold">5. Forest-Area Overlap (10%)</span>
+                            <span class="small font-monospace" id="compScoreForest">-- / 10 pts</span>
+                        </div>
+                        <div class="progress" style="height: 6px; background: #EAF1E8;">
+                            <div class="progress-bar bg-forest" id="compBarForest" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="small text-muted" id="compExplForest">--</span>
+                            <span class="badge badge-sm bg-light text-secondary border" id="compStatusForest">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="vd-score-disclaimer alert alert-light border small text-muted mt-3 mb-0 p-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    <strong>Prototype Rule:</strong> Transparent prototype weights (30% Conf, 30% Cluster, 15% FRP, 15% Recency, 10% Forest) for decision-support evaluation, not official fire-risk thresholds.
+                </div>
+            </div>
+
             <!-- Operational Notes & Field Guidance -->
             <div class="vd-drawer-card mb-3">
                 <div class="vd-drawer-card-title">
@@ -305,6 +407,12 @@
     <!-- Data Injection for Client Dashboard Script -->
     <script id="vdObservationsData" type="application/json">
         {{ observations_json|default:"[]"|safe }}
+    </script>
+    <script id="vdTimelineData" type="application/json">
+        {{ timeline_json|default:"[]"|safe }}
+    </script>
+    <script id="vdScoreBinsData" type="application/json">
+        {{ score_bins_json|default:"{}"|safe }}
     </script>
 
     <!-- Core Project Dashboard Script -->
