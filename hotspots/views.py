@@ -1,25 +1,59 @@
 import json
 from collections import defaultdict
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
-from .models import Observation, TelemetrySync
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from .models import Observation, ResponseCase, TelemetrySync
 from .scoring import calculate_priority_score
 
 
-def dashboard(request):
+def dashboard(request, active_page="dashboard"):
     """
     Renders the primary Forest Intelligence Dashboard for Nainital Forest Division.
     Passes real/historical/simulated observation records, explainable priority score metrics,
     and telemetry status from the database.
     """
     observations_qs = Observation.objects.all().order_by("-detected_at")
-    total_count = observations_qs.count()
-    high_count = observations_qs.filter(priority="high").count()
-    medium_count = observations_qs.filter(priority="medium").count()
-    low_count = observations_qs.filter(priority="low").count()
-    cases_under_review = observations_qs.filter(status="under-review").count()
+    observations_list = list(observations_qs)
+    total_count = len(observations_list)
 
+    # In-memory single-pass aggregation to avoid redundant database roundtrips
+    high_count = 0
+    medium_count = 0
+    low_count = 0
+    cases_under_review = 0
+    simulated_count = 0
+    historical_count = 0
+    real_count = 0
+    conf_values = []
+    frp_values = []
+
+    for obs in observations_list:
+        if obs.priority == "high":
+            high_count += 1
+        elif obs.priority == "medium":
+            medium_count += 1
+        elif obs.priority == "low":
+            low_count += 1
+
+        if obs.status == "under-review":
+            cases_under_review += 1
+
+        if obs.data_nature == "simulated":
+            simulated_count += 1
+        elif obs.data_nature == "historical":
+            historical_count += 1
+        elif obs.data_nature == "real":
+            real_count += 1
+
+        if obs.confidence is not None:
+            conf_values.append(obs.confidence)
+        if obs.frp_mw is not None:
+            frp_values.append(obs.frp_mw)
+
+    # Telemetry sync status
     telemetry = TelemetrySync.objects.first()
     is_connected = False
     last_sync_time = None
@@ -29,13 +63,9 @@ def dashboard(request):
         last_sync_time = telemetry.last_sync_time
     elif total_count > 0:
         is_connected = True
-        last_sync_time = observations_qs.first().detected_at
+        last_sync_time = observations_list[0].detected_at
 
-    # Determine overall data mode for user clarity: simulated, historical, real, or empty
-    simulated_count = observations_qs.filter(data_nature="simulated").count()
-    historical_count = observations_qs.filter(data_nature="historical").count()
-    real_count = observations_qs.filter(data_nature="real").count()
-
+    # Determine overall data mode for user clarity: simulated, historical, real, empty, or mixed
     if total_count == 0:
         data_mode = "empty"
     elif simulated_count == total_count:
@@ -47,9 +77,6 @@ def dashboard(request):
     else:
         data_mode = "mixed"
 
-    # Pre-fetch all observations into memory for spatial repeat / cluster evaluation
-    observations_list = list(observations_qs)
-
     # Attach computed explainable scores to each model instance
     for obs in observations_list:
         score_info = calculate_priority_score(obs, all_observations=observations_list)
@@ -60,10 +87,7 @@ def dashboard(request):
         obs.score_explanation = score_info["explanation_summary"]
 
     # Calculate average confidence and peak FRP
-    conf_values = [o.confidence for o in observations_list if o.confidence is not None]
     avg_confidence = round(sum(conf_values) / len(conf_values), 1) if conf_values else None
-
-    frp_values = [o.frp_mw for o in observations_list if o.frp_mw is not None]
     peak_frp = round(max(frp_values), 1) if frp_values else None
 
     # Temporal Trends & Historical Timeline Grouping (by detection date)
@@ -77,7 +101,6 @@ def dashboard(request):
         if obs.priority in entry:
             entry[obs.priority] += 1
 
-    # Sorted chronologically
     timeline_data = [timeline_map[k] for k in sorted(timeline_map.keys())]
 
     # Priority score distribution bins
@@ -139,7 +162,7 @@ def dashboard(request):
         "is_connected": is_connected,
         "last_sync_time": last_sync_time,
         "telemetry": telemetry,
-        "active_page": "dashboard",
+        "active_page": active_page,
     }
     return render(request, "hotspots/dashboard.html", context)
 
@@ -149,42 +172,77 @@ def hotspots_cases(request):
     Cases and Hotspots view for /hotspots/ route.
     Unified experience reusing the dashboard template with Hotspots nav item active.
     """
-    # Get the full dashboard response context, then override active_page
-    response = dashboard(request)
-    # The dashboard view returns a TemplateResponse; patch the context_data
-    if hasattr(response, "context_data") and response.context_data is not None:
-        response.context_data["active_page"] = "hotspots"
-    return response
+    return dashboard(request, active_page="hotspots")
 
 
+@csrf_exempt
 def api_refresh_telemetry(request):
     """
-    Performs a real telemetry verification operation.
-    Updates the sync timestamp and returns latest telemetry statistics.
+    Performs telemetry verification and Near-Real-Time (NRT) satellite observation sync.
+    Reads FIRMS_MAP_KEY from Django settings or environment variables (populated from root .env).
+    If key is missing, provides an explicit message indicating the API key is required.
     """
-    now = timezone.now()
-    telemetry, _ = TelemetrySync.objects.get_or_create(
-        division_name="Nainital Forest Division",
-        defaults={
-            "source_name": "NASA FIRMS (VIIRS / MODIS)",
-            "status": "connected",
-        },
-    )
-    telemetry.last_sync_time = now
-    telemetry.status = "connected"
-    obs_count = Observation.objects.count()
-    telemetry.observations_ingested = obs_count
-    telemetry.save()
+    import os
+    from django.conf import settings
+    from .data_pipeline import fetch_firms_live_data
 
-    return JsonResponse(
-        {
-            "status": "success",
-            "message": "Satellite telemetry synchronized successfully with Nainital Forest Division node.",
-            "timestamp": now.strftime("%b %d, %Y · %H:%M:%S UTC"),
-            "observations_count": obs_count,
-            "connected": True,
-        }
-    )
+    now = timezone.now()
+    map_key = (
+        getattr(settings, "FIRMS_MAP_KEY", None)
+        or os.environ.get("FIRMS_MAP_KEY", "")
+    ).strip()
+
+    try:
+        telemetry, _ = TelemetrySync.objects.get_or_create(
+            division_name="Nainital Forest Division",
+            defaults={
+                "source_name": "NASA FIRMS (VIIRS / MODIS)",
+                "status": "connected",
+            },
+        )
+
+        if not map_key:
+            sync_detail = (
+                "Operating in local verification mode. "
+                "API key required: Set FIRMS_MAP_KEY in root .env to enable live NASA FIRMS satellite observations."
+            )
+            live_sync_enabled = False
+        else:
+            live_sync_enabled = True
+            firms_res = fetch_firms_live_data(map_key=map_key, day_range=1)
+            if firms_res.get("success"):
+                if firms_res.get("status") == "no_anomalies":
+                    sync_detail = f"Live FIRMS query OK: {firms_res.get('message')}"
+                else:
+                    sync_detail = f"Live FIRMS sync complete ({firms_res.get('created', 0)} new, {firms_res.get('updated', 0)} updated)."
+            else:
+                sync_detail = f"Live FIRMS sync note: {firms_res.get('error')}"
+
+        telemetry.last_sync_time = now
+        telemetry.status = "connected"
+        obs_count = Observation.objects.count()
+        telemetry.observations_ingested = obs_count
+        telemetry.save()
+
+        return JsonResponse(
+            {
+                "status": "success",
+                "message": f"Satellite telemetry synchronized successfully. {sync_detail}",
+                "timestamp": now.strftime("%b %d, %Y · %H:%M:%S UTC"),
+                "observations_count": obs_count,
+                "connected": True,
+                "live_sync_enabled": live_sync_enabled,
+            }
+        )
+    except Exception as exc:
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": f"Telemetry synchronization error: {str(exc)}",
+                "connected": False,
+            },
+            status=500,
+        )
 
 
 def api_observations(request):
@@ -195,6 +253,7 @@ def api_observations(request):
       - status: new, under-review, verified, closed
       - data_nature: simulated, historical, real
       - min_confidence: int
+      - search: string (matches observation_id, location_name, forest_range, satellite_source)
     """
     qs = Observation.objects.all().order_by("-detected_at")
 
@@ -216,6 +275,17 @@ def api_observations(request):
             qs = qs.filter(confidence__gte=int(min_conf))
         except ValueError:
             pass
+
+    search_query = request.GET.get("search")
+    if search_query:
+        search_query = search_query.strip()
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(observation_id__icontains=search_query)
+            | Q(location_name__icontains=search_query)
+            | Q(forest_range__icontains=search_query)
+            | Q(satellite_source__icontains=search_query)
+        )
 
     all_obs = list(Observation.objects.all())
     data = []
@@ -244,3 +314,338 @@ def api_observations(request):
             }
         )
     return JsonResponse({"count": len(data), "observations": data})
+
+
+@csrf_exempt
+def api_observation_detail(request, observation_id):
+    """
+    Retrieve or update a specific satellite observation by ID.
+    GET: Returns full observation detail and explainable priority score breakdown.
+    PATCH/POST: Update status ('new', 'under-review', 'verified', 'closed') or notes.
+    """
+    try:
+        obs = Observation.objects.get(observation_id=observation_id)
+    except Observation.DoesNotExist:
+        return JsonResponse(
+            {"status": "error", "error": f"Observation '{observation_id}' not found."},
+            status=404,
+        )
+
+    if request.method in ["POST", "PATCH"]:
+        try:
+            body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        except Exception:
+            body = request.POST.dict()
+
+        new_status = body.get("status")
+        if new_status:
+            allowed_statuses = [choice[0] for choice in Observation.STATUS_CHOICES]
+            if new_status not in allowed_statuses:
+                return JsonResponse(
+                    {
+                        "status": "error",
+                        "error": f"Invalid status '{new_status}'. Allowed: {', '.join(allowed_statuses)}",
+                    },
+                    status=400,
+                )
+            obs.status = new_status
+
+        if "notes" in body:
+            obs.notes = body["notes"]
+
+        obs.save()
+
+    all_obs = list(Observation.objects.all())
+    score_info = calculate_priority_score(obs, all_observations=all_obs)
+
+    # Associated response cases
+    cases_data = [
+        {
+            "case_id": c.case_id,
+            "status": c.status,
+            "assigned_team": c.assigned_team,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in obs.response_cases.all()
+    ]
+
+    return JsonResponse(
+        {
+            "status": "success",
+            "observation": {
+                "id": obs.observation_id,
+                "latitude": obs.latitude,
+                "longitude": obs.longitude,
+                "location_name": obs.location_name,
+                "forest_range": obs.forest_range,
+                "detected_at": obs.detected_at.isoformat(),
+                "satellite_source": obs.satellite_source,
+                "confidence": obs.confidence,
+                "frp_mw": obs.frp_mw,
+                "brightness_temp_k": obs.brightness_temp_k,
+                "priority": obs.priority,
+                "priority_score": score_info["score"],
+                "priority_category": score_info["category"],
+                "score_components": score_info["components"],
+                "score_explanation": score_info["explanation_summary"],
+                "status": obs.status,
+                "data_nature": obs.data_nature,
+                "notes": obs.notes,
+                "response_cases": cases_data,
+            },
+        }
+    )
+
+
+@csrf_exempt
+def api_cases(request):
+    """
+    List or create Response Cases for operational verification in Nainital Forest Division.
+    GET: List all cases, optional query filters: status, priority, observation_id.
+    POST: Create a new case. Can be linked to an observation or standalone location.
+    """
+    if request.method == "GET":
+        qs = ResponseCase.objects.all().order_by("-created_at")
+
+        status_param = request.GET.get("status")
+        if status_param and status_param in ["new", "assigned", "under-review", "verified", "closed"]:
+            qs = qs.filter(status=status_param)
+
+        priority_param = request.GET.get("priority")
+        if priority_param and priority_param in ["high", "medium", "low"]:
+            qs = qs.filter(priority=priority_param)
+
+        obs_param = request.GET.get("observation_id")
+        if obs_param:
+            qs = qs.filter(observation__observation_id=obs_param)
+
+        cases_list = []
+        for c in qs:
+            cases_list.append(
+                {
+                    "case_id": c.case_id,
+                    "observation_id": c.observation.observation_id if c.observation else None,
+                    "location_name": c.location_name,
+                    "forest_range": c.forest_range,
+                    "latitude": c.latitude,
+                    "longitude": c.longitude,
+                    "priority": c.priority,
+                    "status": c.status,
+                    "assigned_team": c.assigned_team,
+                    "notes": c.notes,
+                    "created_at": c.created_at.isoformat(),
+                    "updated_at": c.updated_at.isoformat(),
+                }
+            )
+        return JsonResponse({"count": len(cases_list), "cases": cases_list})
+
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        except Exception:
+            body = request.POST.dict()
+
+        obs_id = body.get("observation_id")
+        observation = None
+        if obs_id:
+            try:
+                observation = Observation.objects.get(observation_id=obs_id)
+            except Observation.DoesNotExist:
+                return JsonResponse(
+                    {"status": "error", "error": f"Observation '{obs_id}' not found."},
+                    status=404,
+                )
+
+        location_name = body.get("location_name") or (observation.location_name if observation else None)
+        if not location_name or not str(location_name).strip():
+            return JsonResponse(
+                {"status": "error", "error": "Field 'location_name' is required to create a response case."},
+                status=400,
+            )
+
+        forest_range = body.get("forest_range") or (observation.forest_range if observation else "Nainital Range")
+        priority = body.get("priority") or (observation.priority if observation else "medium")
+        if priority not in ["high", "medium", "low"]:
+            priority = "medium"
+
+        status_val = body.get("status") or "new"
+        if status_val not in ["new", "assigned", "under-review", "verified", "closed"]:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "error": f"Invalid status '{status_val}'. Allowed: new, assigned, under-review, verified, closed",
+                },
+                status=400,
+            )
+
+        lat = body.get("latitude") or (observation.latitude if observation else None)
+        lng = body.get("longitude") or (observation.longitude if observation else None)
+        assigned_team = body.get("assigned_team") or ""
+        notes = body.get("notes") or ""
+
+        # Deterministic or specified case ID
+        now = timezone.now()
+        case_id = body.get("case_id")
+        if not case_id:
+            count = ResponseCase.objects.count() + 1
+            case_id = f"CASE-NNT-{now.strftime('%Y%m%d')}-{count:03d}"
+
+        case = ResponseCase.objects.create(
+            case_id=case_id,
+            observation=observation,
+            location_name=location_name.strip(),
+            forest_range=forest_range.strip(),
+            latitude=lat,
+            longitude=lng,
+            priority=priority,
+            status=status_val,
+            assigned_team=assigned_team.strip(),
+            notes=notes.strip(),
+        )
+
+        return JsonResponse(
+            {
+                "status": "success",
+                "message": "Response case created successfully.",
+                "case": {
+                    "case_id": case.case_id,
+                    "observation_id": case.observation.observation_id if case.observation else None,
+                    "location_name": case.location_name,
+                    "forest_range": case.forest_range,
+                    "latitude": case.latitude,
+                    "longitude": case.longitude,
+                    "priority": case.priority,
+                    "status": case.status,
+                    "assigned_team": case.assigned_team,
+                    "notes": case.notes,
+                    "created_at": case.created_at.isoformat(),
+                },
+            },
+            status=201,
+        )
+
+    return HttpResponse(status=405)
+
+
+@csrf_exempt
+def api_case_detail(request, case_id):
+    """
+    Retrieve or update a specific Response Case by ID.
+    GET: Returns response case detail.
+    PATCH/POST: Update status, assigned team, priority, or field notes.
+    """
+    try:
+        case = ResponseCase.objects.get(case_id=case_id)
+    except ResponseCase.DoesNotExist:
+        return JsonResponse(
+            {"status": "error", "error": f"Response case '{case_id}' not found."},
+            status=404,
+        )
+
+    if request.method in ["POST", "PATCH"]:
+        try:
+            body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        except Exception:
+            body = request.POST.dict()
+
+        if "status" in body:
+            new_status = body["status"]
+            allowed_statuses = [choice[0] for choice in ResponseCase.STATUS_CHOICES]
+            if new_status not in allowed_statuses:
+                return JsonResponse(
+                    {
+                        "status": "error",
+                        "error": f"Invalid status '{new_status}'. Allowed: {', '.join(allowed_statuses)}",
+                    },
+                    status=400,
+                )
+            case.status = new_status
+
+        if "priority" in body:
+            new_p = body["priority"]
+            if new_p not in ["high", "medium", "low"]:
+                return JsonResponse(
+                    {"status": "error", "error": f"Invalid priority '{new_p}'. Allowed: high, medium, low"},
+                    status=400,
+                )
+            case.priority = new_p
+
+        if "assigned_team" in body:
+            case.assigned_team = str(body["assigned_team"]).strip()
+
+        if "notes" in body:
+            case.notes = str(body["notes"]).strip()
+
+        case.save()
+
+    return JsonResponse(
+        {
+            "status": "success",
+            "case": {
+                "case_id": case.case_id,
+                "observation_id": case.observation.observation_id if case.observation else None,
+                "location_name": case.location_name,
+                "forest_range": case.forest_range,
+                "latitude": case.latitude,
+                "longitude": case.longitude,
+                "priority": case.priority,
+                "status": case.status,
+                "assigned_team": case.assigned_team,
+                "notes": case.notes,
+                "created_at": case.created_at.isoformat(),
+                "updated_at": case.updated_at.isoformat(),
+            },
+        }
+    )
+
+
+
+# In-memory tile cache to minimize external network requests
+TILE_CACHE = {}
+
+
+def api_map_tile_proxy(request, z, x, y):
+    """
+    Compliant Tile Proxy endpoint for OpenStreetMap raster tiles.
+    Complies with OpenStreetMap Foundation Tile Usage Policy:
+    - Attaches a documented, unique User-Agent identifier
+    - Caches tiles in memory to avoid repeated requests
+    - Validates zoom and coordinate boundaries
+    - Falls back to Carto Voyager CDN if upstream OSM is throttled or unreachable
+    """
+    import urllib.request
+    import urllib.error
+
+    if not (0 <= z <= 19) or x < 0 or y < 0:
+        return HttpResponse("Invalid tile coordinates", status=400)
+
+    cache_key = f"{z}_{x}_{y}"
+    if cache_key in TILE_CACHE:
+        return HttpResponse(TILE_CACHE[cache_key], content_type="image/png")
+
+    osm_url = f"https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    headers = {
+        "User-Agent": "VanDrishti/1.0 (Forest Fire Monitoring Prototype; Nainital Division; https://github.com/VanDrishti; research@vandrishti.org)"
+    }
+    req = urllib.request.Request(osm_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=4) as response:
+            resp_headers = dict(response.info())
+            if "x-blocked" in resp_headers:
+                raise ValueError("OSM tile blocked")
+            tile_bytes = response.read()
+            if len(TILE_CACHE) < 1000:
+                TILE_CACHE[cache_key] = tile_bytes
+            return HttpResponse(tile_bytes, content_type="image/png")
+    except Exception:
+        # Fallback to Carto Voyager
+        try:
+            fallback_url = f"https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+            req2 = urllib.request.Request(fallback_url, headers={"User-Agent": "VanDrishti/1.0"})
+            with urllib.request.urlopen(req2, timeout=4) as response2:
+                tile_bytes = response2.read()
+                if len(TILE_CACHE) < 1000:
+                    TILE_CACHE[cache_key] = tile_bytes
+                return HttpResponse(tile_bytes, content_type="image/png")
+        except Exception as exc:
+            return HttpResponse(f"Tile fetch failed: {str(exc)}", status=502)

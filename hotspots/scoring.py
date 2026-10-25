@@ -11,7 +11,8 @@ using documented prototype design weights:
 - Forest-area overlap: 10%
 
 Note: These are prototype decision-support weights for research and operational evaluation,
-not official government fire-risk thresholds.
+not official government fire-risk thresholds. Hotspot observations indicate potential thermal
+anomalies, not confirmed forest fires.
 """
 
 import math
@@ -25,7 +26,7 @@ WEIGHT_FRP = 0.15
 WEIGHT_RECENCY = 0.15
 WEIGHT_FOREST_OVERLAP = 0.10
 
-# Bounding box for Nainital Forest Division
+# Documented Bounding box for Nainital Forest Division
 NAINITAL_BOUNDS = {
     "min_lat": 29.10,
     "max_lat": 29.65,
@@ -95,7 +96,7 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
         lng = observation.get("longitude") if "longitude" in observation else observation.get("lng")
         confidence = observation.get("confidence")
         frp = observation.get("frp_mw") if "frp_mw" in observation else observation.get("frp")
-        detected_at = observation.get("detected_at")
+        detected_at = observation.get("detected_at") or observation.get("observation_time")
         location_name = observation.get("location_name") or observation.get("location") or ""
         forest_range = observation.get("forest_range") or observation.get("range") or ""
         explicit_score = observation.get("priority_score")
@@ -175,10 +176,24 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
                     continue
 
                 o_lat = other.get("latitude") if isinstance(other, dict) else getattr(other, "latitude", None)
+                if o_lat is None and isinstance(other, dict):
+                    o_lat = other.get("lat")
                 o_lng = other.get("longitude") if isinstance(other, dict) else getattr(other, "longitude", None)
+                if o_lng is None and isinstance(other, dict):
+                    o_lng = other.get("lng")
 
                 if o_lat is not None and o_lng is not None:
-                    dist = haversine_distance_km(cur_lat, cur_lng, float(o_lat), float(o_lng))
+                    try:
+                        o_lat_f = float(o_lat)
+                        o_lng_f = float(o_lng)
+                    except (ValueError, TypeError):
+                        continue
+
+                    # Fast bounding box pre-filter (~0.045 deg lat, ~0.055 deg lng ≈ 4 km)
+                    if abs(cur_lat - o_lat_f) > 0.045 or abs(cur_lng - o_lng_f) > 0.055:
+                        continue
+
+                    dist = haversine_distance_km(cur_lat, cur_lng, o_lat_f, o_lng_f)
                     if dist <= 3.5:  # 3.5 km proximity threshold for thermal cluster
                         nearby_cluster_count += 1
         except Exception:
@@ -266,52 +281,71 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
     # -------------------------------------------------------------------------
     if detected_at:
         try:
-            if isinstance(detected_at, str):
-                # Attempt ISO format parsing
-                try:
-                    dt = datetime.fromisoformat(detected_at.replace("Z", "+00:00"))
-                except ValueError:
-                    dt = datetime.strptime(detected_at, "%Y-%m-%d %H:%M:%S")
-            else:
+            if isinstance(detected_at, datetime):
                 dt = detected_at
-
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=dt_timezone.utc)
-            ref_dt = reference_time
-            if ref_dt.tzinfo is None:
-                ref_dt = ref_dt.replace(tzinfo=dt_timezone.utc)
-
-            diff_hours = max(0.0, (ref_dt - dt).total_seconds() / 3600.0)
-
-            if diff_hours <= 2.0:
-                rec_pts = 15.0
-                rec_expl = f"Detected {int(diff_hours * 60)}m ago (immediate recency <= 2h)"
-            elif diff_hours <= 6.0:
-                rec_pts = 12.0
-                rec_expl = f"Detected {diff_hours:.1f}h ago (recent window <= 6h)"
-            elif diff_hours <= 12.0:
-                rec_pts = 9.0
-                rec_expl = f"Detected {diff_hours:.1f}h ago (within 12h)"
-            elif diff_hours <= 24.0:
-                rec_pts = 6.0
-                rec_expl = f"Detected {diff_hours:.1f}h ago (within 24h)"
-            elif diff_hours <= 48.0:
-                rec_pts = 3.0
-                rec_expl = f"Detected {diff_hours:.1f}h ago (within 48h)"
+            elif isinstance(detected_at, str):
+                s = detected_at.strip()
+                try:
+                    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                except ValueError:
+                    dt = None
+                    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
+                        try:
+                            dt = datetime.strptime(s, fmt)
+                            break
+                        except ValueError:
+                            continue
             else:
-                rec_pts = 1.0
-                rec_expl = f"Historical observation ({int(diff_hours / 24)} days ago)"
+                dt = None
 
-            components["recency"] = {
-                "name": "Detection Recency",
-                "weight": int(WEIGHT_RECENCY * 100),
-                "score": round(rec_pts, 1),
-                "max_score": int(WEIGHT_RECENCY * 100),
-                "raw_value": f"{diff_hours:.1f}h ago" if diff_hours >= 1.0 else f"{int(diff_hours * 60)}m ago",
-                "status": "available",
-                "explanation": rec_expl,
-            }
-            available_weight += WEIGHT_RECENCY
+            if dt is not None:
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=dt_timezone.utc)
+                ref_dt = reference_time
+                if ref_dt.tzinfo is None:
+                    ref_dt = ref_dt.replace(tzinfo=dt_timezone.utc)
+
+                diff_hours = max(0.0, (ref_dt - dt).total_seconds() / 3600.0)
+
+                if diff_hours <= 2.0:
+                    rec_pts = 15.0
+                    rec_expl = f"Detected {int(diff_hours * 60)}m ago (immediate recency <= 2h)"
+                elif diff_hours <= 6.0:
+                    rec_pts = 12.0
+                    rec_expl = f"Detected {diff_hours:.1f}h ago (recent window <= 6h)"
+                elif diff_hours <= 12.0:
+                    rec_pts = 9.0
+                    rec_expl = f"Detected {diff_hours:.1f}h ago (within 12h)"
+                elif diff_hours <= 24.0:
+                    rec_pts = 6.0
+                    rec_expl = f"Detected {diff_hours:.1f}h ago (within 24h)"
+                elif diff_hours <= 48.0:
+                    rec_pts = 3.0
+                    rec_expl = f"Detected {diff_hours:.1f}h ago (within 48h)"
+                else:
+                    rec_pts = 1.0
+                    rec_expl = f"Historical observation ({int(diff_hours / 24)} days ago)"
+
+                components["recency"] = {
+                    "name": "Detection Recency",
+                    "weight": int(WEIGHT_RECENCY * 100),
+                    "score": round(rec_pts, 1),
+                    "max_score": int(WEIGHT_RECENCY * 100),
+                    "raw_value": f"{diff_hours:.1f}h ago" if diff_hours >= 1.0 else f"{int(diff_hours * 60)}m ago",
+                    "status": "available",
+                    "explanation": rec_expl,
+                }
+                available_weight += WEIGHT_RECENCY
+            else:
+                components["recency"] = {
+                    "name": "Detection Recency",
+                    "weight": int(WEIGHT_RECENCY * 100),
+                    "score": 0.0,
+                    "max_score": int(WEIGHT_RECENCY * 100),
+                    "raw_value": "Unavailable",
+                    "status": "unavailable",
+                    "explanation": "Detection timestamp unparseable",
+                }
         except Exception:
             components["recency"] = {
                 "name": "Detection Recency",
@@ -395,8 +429,6 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
     # -------------------------------------------------------------------------
     # Final Score Aggregation
     # -------------------------------------------------------------------------
-    # If the observation already came with an explicit pre-calculated priority_score,
-    # preserve that score to respect backend pipeline contracts while providing the explanation!
     if explicit_score is not None:
         try:
             calculated_score = float(explicit_score)
@@ -407,7 +439,6 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
         raw_sum = sum(c["score"] for c in components.values())
         # If some inputs were unavailable, normalize to 100 scale proportionally if available_weight >= 0.50
         if available_weight >= 0.50 and available_weight < 1.0:
-            # Scaled to 100 based on available evidence
             calculated_score = (raw_sum / (available_weight * 100.0)) * 100.0
         else:
             calculated_score = raw_sum
@@ -415,15 +446,14 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
     calculated_score = max(0.0, min(100.0, round(calculated_score, 1)))
 
     # Determine priority category
-    if explicit_priority and explicit_priority in ["high", "medium", "low"]:
-        category = explicit_priority
+    if calculated_score >= 70.0:
+        calc_category = "high"
+    elif calculated_score >= 40.0:
+        calc_category = "medium"
     else:
-        if calculated_score >= 70.0:
-            category = "high"
-        elif calculated_score >= 40.0:
-            category = "medium"
-        else:
-            category = "low"
+        calc_category = "low"
+
+    category = explicit_priority if (explicit_priority in ["high", "medium", "low"] and explicit_score is not None) else calc_category
 
     # Human-readable summary
     summary_parts = []
@@ -437,9 +467,9 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
         summary_parts.append(f"high recency ({components['recency']['raw_value']})")
 
     if summary_parts:
-        explanation_summary = f"{category.upper()} priority ({calculated_score:.1f}/100) driven by " + ", ".join(summary_parts) + "."
+        explanation_summary = f"{category.upper()} priority ({calculated_score:.1f}/100) possible thermal indication driven by " + ", ".join(summary_parts) + "."
     else:
-        explanation_summary = f"{category.upper()} priority ({calculated_score:.1f}/100) based on available satellite telemetry."
+        explanation_summary = f"{category.upper()} priority ({calculated_score:.1f}/100) possible thermal indication based on available satellite telemetry."
 
     is_complete = all(c["status"] == "available" for c in components.values())
 

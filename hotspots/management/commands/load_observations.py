@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 import os
 from hotspots.data_pipeline import import_observations_from_csv
-from hotspots.models import Observation, TelemetrySync
+from hotspots.models import Observation
 
 
 class Command(BaseCommand):
@@ -31,20 +31,26 @@ class Command(BaseCommand):
             action="store_true",
             help="Validate CSV and print statistics without saving to database",
         )
+        parser.add_argument(
+            "--filter-bounds",
+            action="store_true",
+            help="Only import observations strictly within the documented Nainital district boundary",
+        )
 
     def handle(self, *args, **options):
         csv_path = options["csv"]
         data_type = options["data_type"]
         clear = options["clear"]
         dry_run = options["dry_run"]
+        filter_bounds = options.get("filter_bounds", False)
 
         if clear:
             count = Observation.objects.count()
             Observation.objects.all().delete()
             self.stdout.write(self.style.WARNING(f"Cleared {count} existing observations."))
 
-        self.stdout.write(f"Importing observations from '{csv_path}' (type: {data_type}, dry_run: {dry_run})...")
-        res = import_observations_from_csv(csv_path, default_data_nature=data_type, dry_run=dry_run)
+        self.stdout.write(f"Importing observations from '{csv_path}' (type: {data_type}, dry_run: {dry_run}, filter_bounds: {filter_bounds})...")
+        res = import_observations_from_csv(csv_path, default_data_nature=data_type, dry_run=dry_run, filter_bounds=filter_bounds)
 
         if not res["success"]:
             self.stdout.write(self.style.ERROR(f"Import failed: {res.get('error')}"))

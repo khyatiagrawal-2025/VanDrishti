@@ -10,10 +10,39 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Safe, zero-dependency environment variable loader for root-level .env
+def _load_env_file(env_file_path):
+    """
+    Loads key-value pairs from a local .env file into os.environ if not already set.
+    Supports comments, blank lines, quotes, and UTF-8 BOM.
+    """
+    path = Path(env_file_path)
+    if not path.is_file():
+        return
+    try:
+        with open(path, "r", encoding="utf-8-sig") as fp:
+            for line in fp:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if len(v) >= 2 and ((v[0] == '"' and v[-1] == '"') or (v[0] == "'" and v[-1] == "'")):
+                        v = v[1:-1]
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+    except Exception:
+        pass
+
+
+_load_env_file(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -127,3 +156,9 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+
+# NASA FIRMS Integration
+FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", "").strip()
+FIRMS_DEFAULT_SOURCE = os.environ.get("FIRMS_DEFAULT_SOURCE", "VIIRS_NOAA20_NRT").strip()
+NAINITAL_BBOX = os.environ.get("NAINITAL_BBOX", "79.10,29.10,79.80,29.65").strip()

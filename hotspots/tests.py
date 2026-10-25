@@ -1,16 +1,19 @@
 import os
 import json
-from datetime import timedelta
+import tempfile
+from datetime import datetime, timedelta, timezone as dt_timezone
 from django.test import TestCase, Client
 from django.utils import timezone
 from django.urls import reverse
 from django.core.management import call_command
-from .models import Observation, TelemetrySync
-from .scoring import calculate_priority_score, haversine_distance_km
+from .models import Observation, ResponseCase, TelemetrySync
+from .scoring import calculate_priority_score, haversine_distance_km, NAINITAL_BOUNDS
 from .data_pipeline import (
     validate_observation_record,
     parse_firms_datetime,
     normalize_confidence,
+    normalize_data_nature,
+    normalize_status,
     import_observations_from_csv,
 )
 
@@ -271,6 +274,17 @@ class DashboardViewTest(TestCase):
         self.assertIn("priority_score", json_data[0])
         self.assertIn("score_breakdown", json_data[0])
 
+    def test_dashboard_basemap_elements(self):
+        """Verify Leaflet mount point, basemap switcher buttons, and tile error banner exist."""
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="dashboardMap"')
+        self.assertContains(response, 'id="btnLayerOSM"')
+        self.assertContains(response, 'id="btnLayerTopo"')
+        self.assertContains(response, 'id="btnLayerVoyager"')
+        self.assertContains(response, 'id="mapTileErrorBanner"')
+        self.assertContains(response, 'id="mapCoordsHud"')
+
 
 class HotspotsCasesViewTest(TestCase):
     def setUp(self):
@@ -350,3 +364,485 @@ class ManagementCommandsTest(TestCase):
     def test_load_observations_dry_run_command(self):
         csv_file = os.path.join("hotspots", "data", "historical_firms_nainital_sample.csv")
         call_command("load_observations", csv=csv_file, dry_run=True)
+
+
+# =============================================================================
+# Additional Robustness & Integration Tests for Member 1 Deliverables
+# =============================================================================
+
+class ResponseCaseModelTest(TestCase):
+    def setUp(self):
+        self.obs = Observation.objects.create(
+            observation_id="VD-RC-01",
+            latitude=29.3952,
+            longitude=79.4418,
+            location_name="China Peak",
+            forest_range="Nainital Central Range",
+            detected_at=timezone.now(),
+            priority="high",
+            status="under-review",
+        )
+
+    def test_create_response_case_linked_to_observation(self):
+        case = ResponseCase.objects.create(
+            case_id="CASE-NNT-2026-001",
+            observation=self.obs,
+            location_name=self.obs.location_name,
+            forest_range=self.obs.forest_range,
+            latitude=self.obs.latitude,
+            longitude=self.obs.longitude,
+            priority="high",
+            status="under-review",
+            assigned_team="China Peak Beat Squad",
+            notes="Watchtower visual check ordered.",
+        )
+        self.assertEqual(case.case_id, "CASE-NNT-2026-001")
+        self.assertEqual(case.observation, self.obs)
+        self.assertEqual(case.assigned_team, "China Peak Beat Squad")
+        self.assertIn("CASE-NNT-2026-001", str(case))
+        self.assertIn("China Peak", str(case))
+        self.assertIn(case, self.obs.response_cases.all())
+
+    def test_create_standalone_response_case(self):
+        case = ResponseCase.objects.create(
+            case_id="CASE-STANDALONE-01",
+            location_name="Mukteshwar Perimeter Fireline",
+            forest_range="Mukteshwar Range",
+            latitude=29.47,
+            longitude=79.65,
+            priority="medium",
+            status="assigned",
+            assigned_team="Mukteshwar Beat Guard",
+        )
+        self.assertIsNone(case.observation)
+        self.assertEqual(case.status, "assigned")
+        self.assertEqual(case.priority, "medium")
+
+
+class ObservationDetailEndpointTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.obs = Observation.objects.create(
+            observation_id="VD-DETAIL-01",
+            latitude=29.3803,
+            longitude=79.4636,
+            location_name="Nainital South Beat",
+            forest_range="Nainital South Range",
+            detected_at=timezone.now(),
+            satellite_source="VIIRS (Suomi-NPP)",
+            confidence=82,
+            frp_mw=9.4,
+            priority="high",
+            status="new",
+            data_nature="historical",
+        )
+
+    def test_get_valid_observation_detail(self):
+        url = reverse("api_observation_detail", kwargs={"observation_id": "VD-DETAIL-01"})
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["observation"]["id"], "VD-DETAIL-01")
+        self.assertIn("priority_score", data["observation"])
+        self.assertIn("score_components", data["observation"])
+        self.assertEqual(data["observation"]["location_name"], "Nainital South Beat")
+
+    def test_get_nonexistent_observation_detail(self):
+        url = reverse("api_observation_detail", kwargs={"observation_id": "VD-NONEXISTENT-999"})
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 404)
+        data = res.json()
+        self.assertEqual(data["status"], "error")
+        self.assertIn("not found", data["error"])
+
+    def test_update_observation_status_valid(self):
+        url = reverse("api_observation_detail", kwargs={"observation_id": "VD-DETAIL-01"})
+        payload = {"status": "under-review", "notes": "Dispatched beat guard for visual verification."}
+        res = self.client.post(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 200)
+        self.obs.refresh_from_db()
+        self.assertEqual(self.obs.status, "under-review")
+        self.assertIn("Dispatched beat guard", self.obs.notes)
+
+    def test_update_observation_status_invalid_choice(self):
+        url = reverse("api_observation_detail", kwargs={"observation_id": "VD-DETAIL-01"})
+        payload = {"status": "nonexistent-status"}
+        res = self.client.post(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 400)
+        data = res.json()
+        self.assertEqual(data["status"], "error")
+        self.assertIn("Invalid status", data["error"])
+
+
+class ResponseCaseEndpointsTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.obs = Observation.objects.create(
+            observation_id="VD-OBS-CASE-01",
+            latitude=29.3900,
+            longitude=79.4500,
+            location_name="Kilbury Road Flank",
+            forest_range="Kilbury Oak Forest Range",
+            detected_at=timezone.now(),
+            priority="high",
+            status="under-review",
+        )
+
+    def test_list_cases_empty(self):
+        res = self.client.get(reverse("api_cases"))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["count"], 0)
+        self.assertEqual(data["cases"], [])
+
+    def test_create_case_with_observation_link(self):
+        payload = {
+            "observation_id": "VD-OBS-CASE-01",
+            "assigned_team": "Kilbury Sector Squad",
+            "notes": "Verify smoke plume reported from watchtower.",
+        }
+        res = self.client.post(reverse("api_cases"), data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["case"]["observation_id"], "VD-OBS-CASE-01")
+        self.assertEqual(data["case"]["location_name"], "Kilbury Road Flank")
+        self.assertEqual(data["case"]["assigned_team"], "Kilbury Sector Squad")
+        self.assertEqual(ResponseCase.objects.count(), 1)
+
+    def test_create_case_invalid_observation_id(self):
+        payload = {
+            "observation_id": "VD-DOES-NOT-EXIST",
+            "location_name": "Somewhere",
+        }
+        res = self.client.post(reverse("api_cases"), data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 404)
+        data = res.json()
+        self.assertEqual(data["status"], "error")
+        self.assertIn("not found", data["error"])
+
+    def test_create_case_missing_location_name(self):
+        payload = {
+            "assigned_team": "Squad 1",
+        }
+        res = self.client.post(reverse("api_cases"), data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 400)
+        data = res.json()
+        self.assertEqual(data["status"], "error")
+        self.assertIn("location_name", data["error"])
+
+    def test_get_case_detail_valid_and_nonexistent(self):
+        case = ResponseCase.objects.create(
+            case_id="CASE-TEST-100",
+            location_name="Snow View Trail",
+            forest_range="Nainital Central Range",
+            priority="medium",
+            status="assigned",
+        )
+        # Valid retrieval
+        res_valid = self.client.get(reverse("api_case_detail", kwargs={"case_id": "CASE-TEST-100"}))
+        self.assertEqual(res_valid.status_code, 200)
+        self.assertEqual(res_valid.json()["case"]["case_id"], "CASE-TEST-100")
+
+        # Nonexistent ID
+        res_invalid = self.client.get(reverse("api_case_detail", kwargs={"case_id": "CASE-DOES-NOT-EXIST"}))
+        self.assertEqual(res_invalid.status_code, 404)
+        self.assertEqual(res_invalid.json()["status"], "error")
+
+    def test_update_case_status_and_assignment(self):
+        case = ResponseCase.objects.create(
+            case_id="CASE-TEST-200",
+            location_name="Bhowali Foothills",
+            forest_range="Bhowali Forest Range",
+            priority="low",
+            status="new",
+        )
+        url = reverse("api_case_detail", kwargs={"case_id": "CASE-TEST-200"})
+        payload = {
+            "status": "verified",
+            "assigned_team": "Bhowali Beat Team Alpha",
+            "notes": "Controlled stubble burn verified extinguished.",
+        }
+        res = self.client.post(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(res.status_code, 200)
+        case.refresh_from_db()
+        self.assertEqual(case.status, "verified")
+        self.assertEqual(case.assigned_team, "Bhowali Beat Team Alpha")
+
+
+class HotspotsCasesNavigationTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_dashboard_active_page_context(self):
+        res = self.client.get(reverse("dashboard"))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.context["active_page"], "dashboard")
+
+    def test_hotspots_cases_active_page_context(self):
+        res = self.client.get(reverse("hotspots"))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.context["active_page"], "hotspots")
+
+
+class DataPipelineExtendedTest(TestCase):
+    def test_normalize_data_nature_aliases(self):
+        self.assertEqual(normalize_data_nature("sample"), "simulated")
+        self.assertEqual(normalize_data_nature("benchmark"), "simulated")
+        self.assertEqual(normalize_data_nature("archive"), "historical")
+        self.assertEqual(normalize_data_nature("latest-available"), "real")
+        self.assertEqual(normalize_data_nature("live"), "real")
+        self.assertEqual(normalize_data_nature("unknown_type", default="historical"), "historical")
+
+    def test_normalize_status_aliases(self):
+        self.assertEqual(normalize_status("under review"), "under-review")
+        self.assertEqual(normalize_status("checking"), "under-review")
+        self.assertEqual(normalize_status("resolved"), "closed")
+        self.assertEqual(normalize_status("assigned"), "new")
+        self.assertEqual(normalize_status("new"), "new")
+
+    def test_filter_bounds_option_in_import(self):
+        # Create a temp CSV with 1 inside Nainital bound, 1 outside (e.g. Bangalore coordinates)
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".csv", encoding="utf-8") as f:
+            f.write("observation_id,latitude,longitude,observation_time,confidence,frp\n")
+            f.write("VD-IN-BOUNDS,29.3800,79.4600,2026-05-15 10:00:00,85,12.0\n")
+            f.write("VD-OUT-BOUNDS,12.9716,77.5946,2026-05-15 10:00:00,85,12.0\n")
+            temp_path = f.name
+
+        try:
+            res = import_observations_from_csv(temp_path, filter_bounds=True)
+            self.assertTrue(res["success"])
+            self.assertEqual(res["created"], 1)
+            self.assertEqual(res["skipped"], 1)
+            self.assertTrue(Observation.objects.filter(observation_id="VD-IN-BOUNDS").exists())
+            self.assertFalse(Observation.objects.filter(observation_id="VD-OUT-BOUNDS").exists())
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_import_empty_csv(self):
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".csv", encoding="utf-8") as f:
+            f.write("")  # Empty file
+            temp_path = f.name
+
+        try:
+            res = import_observations_from_csv(temp_path)
+            self.assertTrue(res["success"])
+            self.assertEqual(res["total_rows"], 0)
+            self.assertEqual(res["created"], 0)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_import_duplicate_observations(self):
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".csv", encoding="utf-8") as f:
+            f.write("observation_id,latitude,longitude,observation_time,confidence,frp\n")
+            f.write("VD-DUP-01,29.3800,79.4600,2026-05-15 10:00:00,80,10.0\n")
+            temp_path = f.name
+
+        try:
+            res1 = import_observations_from_csv(temp_path)
+            self.assertEqual(res1["created"], 1)
+            # Re-import same CSV
+            res2 = import_observations_from_csv(temp_path)
+            self.assertEqual(res2["created"], 0)
+            self.assertEqual(res2["updated"], 1)
+            self.assertEqual(Observation.objects.filter(observation_id="VD-DUP-01").count(), 1)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+
+class ScoringEngineResilienceTest(TestCase):
+    def test_calculate_with_missing_and_invalid_inputs(self):
+        # Observation with string/invalid confidence and FRP
+        obs = {
+            "observation_id": "VD-RES-01",
+            "latitude": "29.38",
+            "longitude": "79.46",
+            "confidence": "invalid-str",
+            "frp_mw": "bad-frp",
+            "detected_at": "invalid-date",
+            "location_name": "Test Point",
+        }
+        res = calculate_priority_score(obs)
+        self.assertIsInstance(res["score"], float)
+        self.assertEqual(res["components"]["confidence"]["status"], "unavailable")
+        self.assertEqual(res["components"]["frp"]["status"], "unavailable")
+        self.assertEqual(res["components"]["recency"]["status"], "unavailable")
+        self.assertEqual(res["category"], "low")
+
+    def test_calculate_with_datetime_object(self):
+        now = datetime(2026, 5, 20, 14, 0, tzinfo=dt_timezone.utc)
+        obs = {
+            "observation_id": "VD-DT-01",
+            "latitude": 29.3800,
+            "longitude": 79.4600,
+            "confidence": 90,
+            "frp_mw": 15.0,
+            "detected_at": now - timedelta(hours=1),
+            "location_name": "China Peak",
+            "forest_range": "Nainital Central Range",
+        }
+        res = calculate_priority_score(obs, reference_time=now)
+        self.assertEqual(res["components"]["recency"]["status"], "available")
+        self.assertEqual(res["components"]["recency"]["score"], 15.0)
+
+    def test_search_filter_in_api_observations(self):
+        client = Client()
+        Observation.objects.create(
+            observation_id="VD-SEARCH-PINE",
+            latitude=29.38,
+            longitude=79.46,
+            location_name="Nainital Pine Valley",
+            forest_range="Nainital South Range",
+            detected_at=timezone.now(),
+            priority="high",
+            confidence=85,
+        )
+        Observation.objects.create(
+            observation_id="VD-SEARCH-OAK",
+            latitude=29.41,
+            longitude=79.47,
+            location_name="Kilbury Oak Sanctuary",
+            forest_range="Kilbury Range",
+            detected_at=timezone.now(),
+            priority="medium",
+            confidence=75,
+        )
+
+        res = client.get(reverse("api_observations") + "?search=Kilbury")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["observations"][0]["id"], "VD-SEARCH-OAK")
+
+
+from unittest.mock import patch, MagicMock
+from io import BytesIO
+from django.core.management import call_command
+from hotspots.data_pipeline import fetch_firms_live_data
+
+
+class FirmsApiAndTileProxyTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_firms_live_missing_key(self):
+        with self.settings(FIRMS_MAP_KEY=""):
+            with patch.dict(os.environ, {"FIRMS_MAP_KEY": ""}, clear=False):
+                res = fetch_firms_live_data(map_key="")
+                self.assertFalse(res["success"])
+                self.assertEqual(res["status"], "missing_credentials")
+                self.assertEqual(res["created"], 0)
+                self.assertIn("FIRMS_MAP_KEY", res["error"])
+
+    def test_firms_live_valid_csv_parsing(self):
+        mock_csv = (
+            "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n"
+            "29.3803,79.4636,335.2,0.38,0.36,2026-05-18,0830,N,VIIRS,nominal,2.0NRT,295.4,14.8,D\n"
+        ).encode("utf-8")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = mock_csv
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            res = fetch_firms_live_data(map_key="test_dummy_key_1234567890123456", source="VIIRS_NOAA20_NRT")
+            self.assertTrue(res["success"])
+            self.assertEqual(res["created"], 1)
+            obs = Observation.objects.get(latitude=29.3803, longitude=79.4636)
+            self.assertEqual(obs.data_nature, "real")
+            self.assertEqual(obs.confidence, 65)  # 'nominal' normalized to 65%
+            self.assertEqual(obs.frp_mw, 14.8)
+            self.assertIn("thermal anomaly", obs.notes.lower())
+            self.assertIn("NASA FIRMS", obs.satellite_source)
+
+    def test_firms_live_no_anomalies(self):
+        mock_csv = "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n".encode("utf-8")
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = mock_csv
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            res = fetch_firms_live_data(map_key="test_dummy_key_1234567890123456")
+            self.assertTrue(res["success"])
+            self.assertEqual(res["status"], "no_anomalies")
+            self.assertEqual(res["created"], 0)
+
+    def test_firms_live_network_error_handled_gracefully(self):
+        with patch("urllib.request.urlopen", side_effect=Exception("Connection timed out")):
+            res = fetch_firms_live_data(map_key="test_dummy_key_1234567890123456")
+            self.assertFalse(res["success"])
+            self.assertEqual(res["status"], "api_error")
+            self.assertIn("Connection timed out", res["error"])
+
+    def test_fetch_firms_management_command(self):
+        # Dry-run with no key should exit cleanly without unhandled exception
+        call_command("fetch_firms_hotspots", dry_run=True)
+        # Sample fallback should execute and import historical sample
+        call_command("fetch_firms_hotspots", dry_run=True, sample_fallback=True)
+
+    def test_api_map_tile_proxy_valid(self):
+        res = self.client.get(reverse("api_map_tile_proxy", kwargs={"z": 13, "x": 5904, "y": 3396}))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res["Content-Type"], "image/png")
+        self.assertGreater(len(res.content), 200)
+
+    def test_api_map_tile_proxy_invalid_coords(self):
+        res = self.client.get(reverse("api_map_tile_proxy", kwargs={"z": 25, "x": 0, "y": 0}))
+        self.assertEqual(res.status_code, 400)
+
+    def test_api_refresh_telemetry_endpoint(self):
+        res = self.client.post(reverse("api_refresh"))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertTrue(data["connected"])
+        self.assertIn("observations_count", data)
+    def test_refresh_telemetry_missing_key_reports_key_required(self):
+        with self.settings(FIRMS_MAP_KEY=""):
+            with patch.dict(os.environ, {"FIRMS_MAP_KEY": ""}, clear=False):
+                res = self.client.post(reverse("api_refresh"))
+                self.assertEqual(res.status_code, 200)
+                data = res.json()
+                self.assertEqual(data["status"], "success")
+                self.assertFalse(data["live_sync_enabled"])
+                self.assertIn("API key required", data["message"])
+
+    def test_refresh_telemetry_configured_key_triggers_live_sync(self):
+        mock_csv = (
+            "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n"
+            "29.3900,79.4500,320.0,0.4,0.4,2026-05-18,0900,N,VIIRS,nominal,2.0NRT,290.0,10.0,D\n"
+        ).encode("utf-8")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = mock_csv
+        mock_resp.__enter__.return_value = mock_resp
+
+        with self.settings(FIRMS_MAP_KEY="mock_dummy_key_1234567890123456"):
+            with patch.dict(os.environ, {"FIRMS_MAP_KEY": "mock_dummy_key_1234567890123456"}, clear=False):
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    res = self.client.post(reverse("api_refresh"))
+                    self.assertEqual(res.status_code, 200)
+                    data = res.json()
+                    self.assertEqual(data["status"], "success")
+                    self.assertTrue(data["live_sync_enabled"])
+                    self.assertIn("Live FIRMS sync complete", data["message"])
+
+    def test_load_env_file_parser(self):
+        from config.settings import _load_env_file
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".env", encoding="utf-8") as f:
+            f.write("# comment line\n\nTEST_UNIT_KEY_1=parsed_val_1\nTEST_UNIT_KEY_2=\"quoted_val_2\"\n")
+            temp_path = f.name
+        try:
+            _load_env_file(temp_path)
+            self.assertEqual(os.environ.get("TEST_UNIT_KEY_1"), "parsed_val_1")
+            self.assertEqual(os.environ.get("TEST_UNIT_KEY_2"), "quoted_val_2")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            os.environ.pop("TEST_UNIT_KEY_1", None)
+            os.environ.pop("TEST_UNIT_KEY_2", None)
+
