@@ -717,3 +717,132 @@ class ScoringEngineResilienceTest(TestCase):
         data = res.json()
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["observations"][0]["id"], "VD-SEARCH-OAK")
+
+
+from unittest.mock import patch, MagicMock
+from io import BytesIO
+from django.core.management import call_command
+from hotspots.data_pipeline import fetch_firms_live_data
+
+
+class FirmsApiAndTileProxyTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_firms_live_missing_key(self):
+        with self.settings(FIRMS_MAP_KEY=""):
+            with patch.dict(os.environ, {"FIRMS_MAP_KEY": ""}, clear=False):
+                res = fetch_firms_live_data(map_key="")
+                self.assertFalse(res["success"])
+                self.assertEqual(res["status"], "missing_credentials")
+                self.assertEqual(res["created"], 0)
+                self.assertIn("FIRMS_MAP_KEY", res["error"])
+
+    def test_firms_live_valid_csv_parsing(self):
+        mock_csv = (
+            "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n"
+            "29.3803,79.4636,335.2,0.38,0.36,2026-05-18,0830,N,VIIRS,nominal,2.0NRT,295.4,14.8,D\n"
+        ).encode("utf-8")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = mock_csv
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            res = fetch_firms_live_data(map_key="test_dummy_key_1234567890123456", source="VIIRS_NOAA20_NRT")
+            self.assertTrue(res["success"])
+            self.assertEqual(res["created"], 1)
+            obs = Observation.objects.get(latitude=29.3803, longitude=79.4636)
+            self.assertEqual(obs.data_nature, "real")
+            self.assertEqual(obs.confidence, 65)  # 'nominal' normalized to 65%
+            self.assertEqual(obs.frp_mw, 14.8)
+            self.assertIn("thermal anomaly", obs.notes.lower())
+            self.assertIn("NASA FIRMS", obs.satellite_source)
+
+    def test_firms_live_no_anomalies(self):
+        mock_csv = "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n".encode("utf-8")
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = mock_csv
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            res = fetch_firms_live_data(map_key="test_dummy_key_1234567890123456")
+            self.assertTrue(res["success"])
+            self.assertEqual(res["status"], "no_anomalies")
+            self.assertEqual(res["created"], 0)
+
+    def test_firms_live_network_error_handled_gracefully(self):
+        with patch("urllib.request.urlopen", side_effect=Exception("Connection timed out")):
+            res = fetch_firms_live_data(map_key="test_dummy_key_1234567890123456")
+            self.assertFalse(res["success"])
+            self.assertEqual(res["status"], "api_error")
+            self.assertIn("Connection timed out", res["error"])
+
+    def test_fetch_firms_management_command(self):
+        # Dry-run with no key should exit cleanly without unhandled exception
+        call_command("fetch_firms_hotspots", dry_run=True)
+        # Sample fallback should execute and import historical sample
+        call_command("fetch_firms_hotspots", dry_run=True, sample_fallback=True)
+
+    def test_api_map_tile_proxy_valid(self):
+        res = self.client.get(reverse("api_map_tile_proxy", kwargs={"z": 13, "x": 5904, "y": 3396}))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res["Content-Type"], "image/png")
+        self.assertGreater(len(res.content), 200)
+
+    def test_api_map_tile_proxy_invalid_coords(self):
+        res = self.client.get(reverse("api_map_tile_proxy", kwargs={"z": 25, "x": 0, "y": 0}))
+        self.assertEqual(res.status_code, 400)
+
+    def test_api_refresh_telemetry_endpoint(self):
+        res = self.client.post(reverse("api_refresh"))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertTrue(data["connected"])
+        self.assertIn("observations_count", data)
+    def test_refresh_telemetry_missing_key_reports_key_required(self):
+        with self.settings(FIRMS_MAP_KEY=""):
+            with patch.dict(os.environ, {"FIRMS_MAP_KEY": ""}, clear=False):
+                res = self.client.post(reverse("api_refresh"))
+                self.assertEqual(res.status_code, 200)
+                data = res.json()
+                self.assertEqual(data["status"], "success")
+                self.assertFalse(data["live_sync_enabled"])
+                self.assertIn("API key required", data["message"])
+
+    def test_refresh_telemetry_configured_key_triggers_live_sync(self):
+        mock_csv = (
+            "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n"
+            "29.3900,79.4500,320.0,0.4,0.4,2026-05-18,0900,N,VIIRS,nominal,2.0NRT,290.0,10.0,D\n"
+        ).encode("utf-8")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = mock_csv
+        mock_resp.__enter__.return_value = mock_resp
+
+        with self.settings(FIRMS_MAP_KEY="mock_dummy_key_1234567890123456"):
+            with patch.dict(os.environ, {"FIRMS_MAP_KEY": "mock_dummy_key_1234567890123456"}, clear=False):
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    res = self.client.post(reverse("api_refresh"))
+                    self.assertEqual(res.status_code, 200)
+                    data = res.json()
+                    self.assertEqual(data["status"], "success")
+                    self.assertTrue(data["live_sync_enabled"])
+                    self.assertIn("Live FIRMS sync complete", data["message"])
+
+    def test_load_env_file_parser(self):
+        from config.settings import _load_env_file
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".env", encoding="utf-8") as f:
+            f.write("# comment line\n\nTEST_UNIT_KEY_1=parsed_val_1\nTEST_UNIT_KEY_2=\"quoted_val_2\"\n")
+            temp_path = f.name
+        try:
+            _load_env_file(temp_path)
+            self.assertEqual(os.environ.get("TEST_UNIT_KEY_1"), "parsed_val_1")
+            self.assertEqual(os.environ.get("TEST_UNIT_KEY_2"), "quoted_val_2")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            os.environ.pop("TEST_UNIT_KEY_1", None)
+            os.environ.pop("TEST_UNIT_KEY_2", None)
+

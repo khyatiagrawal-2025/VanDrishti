@@ -99,13 +99,22 @@
                 attributionControl: true,
             });
 
-            // 1. Primary Road & Settlement Basemap: Standard OpenStreetMap
-            // Global coverage providing full street-level details, road names, settlements, village paths in Nainital
-            var osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+            // 1. Primary Road & Settlement Basemap: CARTO Voyager (OpenStreetMap Data)
+            // Permitted, high-detail basemap providing real road names, highway labels, village settlements,
+            // and topography relief in Nainital Division without 403 localhost rate-blocking
+            var osmLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+                subdomains: "abcd",
+                minZoom: 8,
+                maxZoom: 20,
+                crossOrigin: true,
+            });
+
+            // 1b. Permitted Fallback Road Map: Esri World Street Map
+            var esriStreetLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+                attribution: 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &bull; Source: Esri, USGS, DeLorme',
                 minZoom: 8,
                 maxZoom: 19,
-                crossOrigin: true,
             });
 
             // 2. Topographic Map: OpenTopoMap with elevation shading, peaks and contour lines

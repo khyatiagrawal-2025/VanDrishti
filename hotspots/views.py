@@ -175,12 +175,23 @@ def hotspots_cases(request):
     return dashboard(request, active_page="hotspots")
 
 
+@csrf_exempt
 def api_refresh_telemetry(request):
     """
-    Performs a real telemetry verification operation.
-    Updates the sync timestamp and returns latest telemetry statistics.
+    Performs telemetry verification and Near-Real-Time (NRT) satellite observation sync.
+    Reads FIRMS_MAP_KEY from Django settings or environment variables (populated from root .env).
+    If key is missing, provides an explicit message indicating the API key is required.
     """
+    import os
+    from django.conf import settings
+    from .data_pipeline import fetch_firms_live_data
+
     now = timezone.now()
+    map_key = (
+        getattr(settings, "FIRMS_MAP_KEY", None)
+        or os.environ.get("FIRMS_MAP_KEY", "")
+    ).strip()
+
     try:
         telemetry, _ = TelemetrySync.objects.get_or_create(
             division_name="Nainital Forest Division",
@@ -189,6 +200,24 @@ def api_refresh_telemetry(request):
                 "status": "connected",
             },
         )
+
+        if not map_key:
+            sync_detail = (
+                "Operating in local verification mode. "
+                "API key required: Set FIRMS_MAP_KEY in root .env to enable live NASA FIRMS satellite observations."
+            )
+            live_sync_enabled = False
+        else:
+            live_sync_enabled = True
+            firms_res = fetch_firms_live_data(map_key=map_key, day_range=1)
+            if firms_res.get("success"):
+                if firms_res.get("status") == "no_anomalies":
+                    sync_detail = f"Live FIRMS query OK: {firms_res.get('message')}"
+                else:
+                    sync_detail = f"Live FIRMS sync complete ({firms_res.get('created', 0)} new, {firms_res.get('updated', 0)} updated)."
+            else:
+                sync_detail = f"Live FIRMS sync note: {firms_res.get('error')}"
+
         telemetry.last_sync_time = now
         telemetry.status = "connected"
         obs_count = Observation.objects.count()
@@ -198,10 +227,11 @@ def api_refresh_telemetry(request):
         return JsonResponse(
             {
                 "status": "success",
-                "message": "Satellite telemetry synchronized successfully with Nainital Forest Division node.",
+                "message": f"Satellite telemetry synchronized successfully. {sync_detail}",
                 "timestamp": now.strftime("%b %d, %Y · %H:%M:%S UTC"),
                 "observations_count": obs_count,
                 "connected": True,
+                "live_sync_enabled": live_sync_enabled,
             }
         )
     except Exception as exc:
@@ -567,3 +597,55 @@ def api_case_detail(request, case_id):
             },
         }
     )
+
+
+
+# In-memory tile cache to minimize external network requests
+TILE_CACHE = {}
+
+
+def api_map_tile_proxy(request, z, x, y):
+    """
+    Compliant Tile Proxy endpoint for OpenStreetMap raster tiles.
+    Complies with OpenStreetMap Foundation Tile Usage Policy:
+    - Attaches a documented, unique User-Agent identifier
+    - Caches tiles in memory to avoid repeated requests
+    - Validates zoom and coordinate boundaries
+    - Falls back to Carto Voyager CDN if upstream OSM is throttled or unreachable
+    """
+    import urllib.request
+    import urllib.error
+
+    if not (0 <= z <= 19) or x < 0 or y < 0:
+        return HttpResponse("Invalid tile coordinates", status=400)
+
+    cache_key = f"{z}_{x}_{y}"
+    if cache_key in TILE_CACHE:
+        return HttpResponse(TILE_CACHE[cache_key], content_type="image/png")
+
+    osm_url = f"https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    headers = {
+        "User-Agent": "VanDrishti/1.0 (Forest Fire Monitoring Prototype; Nainital Division; https://github.com/VanDrishti; research@vandrishti.org)"
+    }
+    req = urllib.request.Request(osm_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=4) as response:
+            resp_headers = dict(response.info())
+            if "x-blocked" in resp_headers:
+                raise ValueError("OSM tile blocked")
+            tile_bytes = response.read()
+            if len(TILE_CACHE) < 1000:
+                TILE_CACHE[cache_key] = tile_bytes
+            return HttpResponse(tile_bytes, content_type="image/png")
+    except Exception:
+        # Fallback to Carto Voyager
+        try:
+            fallback_url = f"https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+            req2 = urllib.request.Request(fallback_url, headers={"User-Agent": "VanDrishti/1.0"})
+            with urllib.request.urlopen(req2, timeout=4) as response2:
+                tile_bytes = response2.read()
+                if len(TILE_CACHE) < 1000:
+                    TILE_CACHE[cache_key] = tile_bytes
+                return HttpResponse(tile_bytes, content_type="image/png")
+        except Exception as exc:
+            return HttpResponse(f"Tile fetch failed: {str(exc)}", status=502)

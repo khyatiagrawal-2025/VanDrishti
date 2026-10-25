@@ -392,3 +392,238 @@ def import_observations_from_csv(csv_file_path, default_data_nature="historical"
         "skipped": skipped_count,
         "errors": errors,
     }
+
+
+def fetch_firms_live_data(
+    map_key=None,
+    source="VIIRS_NOAA20_NRT",
+    day_range=1,
+    area_bbox="79.10,29.10,79.80,29.65",
+    dry_run=False,
+    filter_bounds=True,
+):
+    """
+    Fetches real Near-Real-Time (NRT) satellite thermal anomaly observations
+    from the NASA FIRMS Area CSV API for the Nainital study area.
+
+    API Endpoint:
+        https://firms.modaps.eosdis.nasa.gov/api/area/csv/[MAP_KEY]/[SOURCE]/[AREA_COORDINATES]/[DAY_RANGE]
+
+    Args:
+        map_key: 32-character NASA FIRMS Map Key. If None, reads from os.environ.get("FIRMS_MAP_KEY").
+        source: Satellite sensor identifier ('VIIRS_NOAA20_NRT', 'VIIRS_SNPP_NRT', 'VIIRS_NOAA21_NRT', 'MODIS_NRT').
+        day_range: Number of days to retrieve (1 to 5).
+        area_bbox: Bounding box as 'west,south,east,north' (min_lng,min_lat,max_lng,max_lat).
+                   Defaults to Nainital Forest Division: "79.10,29.10,79.80,29.65".
+        dry_run: When True, validates schema without database writes.
+        filter_bounds: When True, skips detections outside documented Nainital boundary.
+
+    Returns:
+        dict with keys: success, status, total_rows, created, updated, skipped, errors, message.
+    """
+    import io
+    import urllib.request
+    import urllib.error
+
+    from django.conf import settings
+    resolved_key = (
+        map_key
+        or getattr(settings, "FIRMS_MAP_KEY", None)
+        or os.environ.get("FIRMS_MAP_KEY")
+        or ""
+    ).strip()
+    if not resolved_key:
+        return {
+            "success": False,
+            "status": "missing_credentials",
+            "error": (
+                "NASA FIRMS MAP_KEY is not configured. Set the FIRMS_MAP_KEY environment variable "
+                "or specify a key. A free MAP_KEY can be requested at https://firms.modaps.eosdis.nasa.gov/api/."
+            ),
+            "total_rows": 0,
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": ["FIRMS_MAP_KEY not found in environment or arguments."],
+        }
+
+    valid_sources = ["VIIRS_NOAA20_NRT", "VIIRS_SNPP_NRT", "VIIRS_NOAA21_NRT", "MODIS_NRT"]
+    if source not in valid_sources:
+        source = "VIIRS_NOAA20_NRT"
+
+    try:
+        days = max(1, min(5, int(day_range)))
+    except (ValueError, TypeError):
+        days = 1
+
+    api_url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{resolved_key}/{source}/{area_bbox}/{days}"
+    headers = {
+        "User-Agent": "VanDrishti-Nainital/1.0 (Forest Fire Monitoring Prototype; Academic/Research; contact@vandrishti.org)"
+    }
+    req = urllib.request.Request(api_url, headers=headers)
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            raw_text = response.read().decode("utf-8-sig")
+    except Exception as exc:
+        return {
+            "success": False,
+            "status": "api_error",
+            "error": f"Failed to connect to NASA FIRMS API: {str(exc)}",
+            "total_rows": 0,
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": [str(exc)],
+        }
+
+    lines = [ln.strip() for ln in raw_text.strip().splitlines() if ln.strip()]
+    if not lines:
+        return {
+            "success": True,
+            "status": "empty",
+            "message": f"Empty response received from NASA FIRMS API for {source}.",
+            "total_rows": 0,
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+
+    header_line = lines[0].lower()
+    if "latitude" not in header_line:
+        error_msg = lines[0]
+        return {
+            "success": False,
+            "status": "api_error_response",
+            "error": f"NASA FIRMS API returned error: {error_msg}",
+            "total_rows": 0,
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": [error_msg],
+        }
+
+    if len(lines) == 1:
+        now = timezone.now()
+        telemetry, _ = TelemetrySync.objects.get_or_create(
+            division_name="Nainital Forest Division",
+            defaults={
+                "source_name": f"NASA FIRMS ({source})",
+                "status": "connected",
+                "last_sync_time": now,
+            },
+        )
+        telemetry.last_sync_time = now
+        telemetry.status = "connected"
+        telemetry.source_name = f"NASA FIRMS ({source})"
+        telemetry.save()
+
+        return {
+            "success": True,
+            "status": "no_anomalies",
+            "message": f"Zero thermal anomalies detected by {source} in Nainital bounding box ({area_bbox}) over the last {days} day(s).",
+            "total_rows": 0,
+            "valid_records": 0,
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+
+    reader = csv.DictReader(io.StringIO(raw_text))
+    rows = list(reader)
+
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    errors = []
+    valid_records = []
+
+    for idx, row in enumerate(rows, start=1):
+        row["data_nature"] = "real"
+        row["satellite_source"] = f"NASA FIRMS ({source})"
+
+        is_valid, result = validate_observation_record(row, default_data_nature="real")
+        if not is_valid:
+            skipped_count += 1
+            errors.append(f"Row {idx}: {result}")
+            continue
+
+        if filter_bounds and not result["in_nainital_bounds"]:
+            skipped_count += 1
+            errors.append(f"Row {idx}: Skipped outside Nainital bounds ({result['latitude']}, {result['longitude']}).")
+            continue
+
+        frp_str = f"{result['frp_mw']} MW" if result["frp_mw"] is not None else "N/A"
+        bright_str = f"{result['brightness_temp_k']} K" if result["brightness_temp_k"] is not None else "N/A"
+        result["notes"] = (
+            f"Possible thermal anomaly detected by {source} sensor (FRP: {frp_str}, Brightness: {bright_str}). "
+            f"Field verification recommended."
+        )
+
+        valid_records.append(result)
+
+    if dry_run:
+        return {
+            "success": True,
+            "status": "dry_run",
+            "total_rows": len(rows),
+            "valid_records": len(valid_records),
+            "skipped": skipped_count,
+            "errors": errors,
+            "dry_run": True,
+        }
+
+    for rec in valid_records:
+        score_info = calculate_priority_score(rec, all_observations=valid_records)
+        rec["priority"] = score_info["category"]
+
+        obj, created = Observation.objects.update_or_create(
+            observation_id=rec["observation_id"],
+            defaults={
+                "latitude": rec["latitude"],
+                "longitude": rec["longitude"],
+                "location_name": rec["location_name"],
+                "forest_range": rec["forest_range"],
+                "detected_at": rec["detected_at"],
+                "satellite_source": rec["satellite_source"],
+                "confidence": rec["confidence"],
+                "brightness_temp_k": rec["brightness_temp_k"],
+                "frp_mw": rec["frp_mw"],
+                "priority": rec["priority"],
+                "status": rec["status"],
+                "data_nature": rec["data_nature"],
+                "notes": rec["notes"],
+            },
+        )
+        if created:
+            created_count += 1
+        else:
+            updated_count += 1
+
+    now = timezone.now()
+    telemetry, _ = TelemetrySync.objects.get_or_create(
+        division_name="Nainital Forest Division",
+        defaults={
+            "source_name": f"NASA FIRMS ({source})",
+            "status": "connected",
+            "last_sync_time": now,
+        },
+    )
+    telemetry.last_sync_time = now
+    telemetry.status = "connected"
+    telemetry.source_name = f"NASA FIRMS ({source})"
+    telemetry.observations_ingested = Observation.objects.count()
+    telemetry.save()
+
+    return {
+        "success": True,
+        "status": "success",
+        "total_rows": len(rows),
+        "valid_records": len(valid_records),
+        "created": created_count,
+        "updated": updated_count,
+        "skipped": skipped_count,
+        "errors": errors,
+    }

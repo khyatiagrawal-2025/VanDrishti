@@ -9,4 +9,6 @@ urlpatterns = [
     path("api/observations/<str:observation_id>/", views.api_observation_detail, name="api_observation_detail"),
     path("api/cases/", views.api_cases, name="api_cases"),
     path("api/cases/<str:case_id>/", views.api_case_detail, name="api_case_detail"),
+    path("api/map/tiles/<int:z>/<int:x>/<int:y>.png", views.api_map_tile_proxy, name="api_map_tile_proxy"),
+    path("api/map/tiles/<int:z>/<int:x>/<int:y>/", views.api_map_tile_proxy, name="api_map_tile_proxy_slash"),
 ]

@@ -35,6 +35,23 @@ The project aims to process satellite-based fire observations, visualise potenti
 
 Data availability, observation timestamps, geographic coverage, and source limitations will be documented as the project develops.
 
+### NASA FIRMS Integration & Open-Source Architecture
+For details on satellite ingestion architecture, duplicate detection handling across sensor passes, rate limits, and basemap tile usage policy compliance, see:
+- [Open-Source Architectural Study & Data Sources](docs/OPEN_SOURCE_STUDY.md)
+
+To configure live NASA FIRMS Near-Real-Time (NRT) satellite thermal anomaly ingestion:
+1. Request a free 32-character Map Key at [NASA FIRMS API](https://firms.modaps.eosdis.nasa.gov/api/).
+2. Copy `.env.example` to `.env` and set `FIRMS_MAP_KEY=your_key_here`.
+3. Fetch live satellite observations for Nainital Forest Division:
+   ```bash
+   python manage.py fetch_firms_hotspots --days 1
+   ```
+4. For offline demonstrations without an API key, use the safe fallback flag:
+   ```bash
+   python manage.py fetch_firms_hotspots --sample-fallback
+   ```
+
+
 ## ⚙️ Planned Workflow
 
 1. Acquire available satellite observations.
