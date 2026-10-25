@@ -1,12 +1,19 @@
 import os
+from django.conf import settings
 from django.core.management.base import BaseCommand
-from hotspots.data_pipeline import fetch_firms_live_data, import_observations_from_csv
+from hotspots.acquisition import (
+    acquire_and_ingest_firms_hotspots,
+    get_firms_api_key,
+    SUPPORTED_SOURCES,
+    DEFAULT_SOURCE,
+)
+from hotspots.data_pipeline import import_observations_from_csv
 
 
 class Command(BaseCommand):
     help = (
-        "Fetch live satellite thermal anomaly observations from NASA FIRMS Area API "
-        "for the Nainital Forest Division study area."
+        "Fetch and ingest near-real-time satellite hotspot observations from NASA FIRMS API "
+        "for Nainital Forest Division"
     )
 
     def add_arguments(self, parser):
@@ -14,20 +21,32 @@ class Command(BaseCommand):
             "--key",
             type=str,
             default="",
-            help="32-character NASA FIRMS MAP_KEY (defaults to os.environ.get('FIRMS_MAP_KEY'))",
+            help="32-character NASA FIRMS MAP_KEY (defaults to FIRMS_MAP_KEY or NASA_FIRMS_API_KEY env var)",
+        )
+        parser.add_argument(
+            "--api-key",
+            type=str,
+            default=None,
+            help="NASA FIRMS MAP_KEY (defaults to FIRMS_MAP_KEY or NASA_FIRMS_API_KEY environment variable)",
         )
         parser.add_argument(
             "--source",
             type=str,
-            default="VIIRS_NOAA20_NRT",
-            choices=["VIIRS_NOAA20_NRT", "VIIRS_SNPP_NRT", "VIIRS_NOAA21_NRT", "MODIS_NRT"],
-            help="Satellite sensor stream (default: VIIRS_NOAA20_NRT)",
+            default=DEFAULT_SOURCE,
+            choices=SUPPORTED_SOURCES,
+            help=f"Satellite sensor product source (default: {DEFAULT_SOURCE})",
         )
         parser.add_argument(
             "--days",
             type=int,
             default=1,
-            help="Days range (1 to 5, default: 1)",
+            help="Number of days of data to query (1-10, default: 1)",
+        )
+        parser.add_argument(
+            "--date",
+            type=str,
+            default=None,
+            help="Acquisition end date (YYYY-MM-DD, optional)",
         )
         parser.add_argument(
             "--bbox",
@@ -50,74 +69,113 @@ class Command(BaseCommand):
             action="store_true",
             help="If no API key is provided or the connection fails, safely import historical FIRMS sample data for offline demonstration",
         )
+        parser.add_argument(
+            "--timeout",
+            type=int,
+            default=15,
+            help="Request timeout in seconds (default: 15)",
+        )
 
     def handle(self, *args, **options):
-        from django.conf import settings
-        key = (
-            options.get("key")
+        api_key = options.get("api_key") or options.get("key") or None
+        source = options.get("source") or DEFAULT_SOURCE
+        days = options.get("days", 1)
+        date = options.get("date")
+        bbox = options.get("bbox", "79.10,29.10,79.80,29.65")
+        dry_run = options.get("dry_run", False)
+        filter_bounds = not options.get("no_filter_bounds", False)
+        sample_fallback = options.get("sample_fallback", False)
+        timeout = options.get("timeout", 15)
+
+        resolved_key = (
+            api_key
+            or get_firms_api_key()
             or getattr(settings, "FIRMS_MAP_KEY", None)
             or os.environ.get("FIRMS_MAP_KEY", "")
         )
-        source = options["source"]
-        days = options["days"]
-        bbox = options["bbox"]
-        dry_run = options["dry_run"]
-        filter_bounds = not options["no_filter_bounds"]
-        sample_fallback = options["sample_fallback"]
+
+        if not resolved_key:
+            self.stdout.write(
+                self.style.ERROR(
+                    "Error: NASA FIRMS API key is missing.\n"
+                    "Please set the FIRMS_MAP_KEY or NASA_FIRMS_API_KEY environment variable,\n"
+                    "or pass it via --api-key <YOUR_MAP_KEY>.\n"
+                    "You can obtain a free key at: https://firms.modaps.eosdis.nasa.gov/api/"
+                )
+            )
+            if sample_fallback:
+                fallback_csv = os.path.join("hotspots", "data", "historical_firms_nainital_sample.csv")
+                self.stdout.write(self.style.NOTICE(f"Executing offline demonstration fallback using '{fallback_csv}'..."))
+                fb_res = import_observations_from_csv(
+                    fallback_csv,
+                    default_data_nature="historical",
+                    dry_run=dry_run,
+                    filter_bounds=filter_bounds,
+                )
+                if fb_res["success"]:
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"Offline fallback loaded: {fb_res.get('created', 0)} created, {fb_res.get('updated', 0)} updated (classified as 'historical')."
+                        )
+                    )
+                else:
+                    self.stdout.write(self.style.ERROR(f"Fallback import failed: {fb_res.get('error')}"))
+            return
 
         self.stdout.write(
-            f"Querying NASA FIRMS ({source}) for Nainital Division [{bbox}] over last {days} day(s)..."
+            f"Querying NASA FIRMS Area API for Nainital (source: {source}, days: {days}, dry_run: {dry_run})..."
         )
 
-        res = fetch_firms_live_data(
-            map_key=key,
+        res = acquire_and_ingest_firms_hotspots(
+            api_key=resolved_key,
             source=source,
             day_range=days,
+            date=date,
             area_bbox=bbox,
+            timeout=timeout,
             dry_run=dry_run,
             filter_bounds=filter_bounds,
         )
 
-        if res["success"]:
-            if res.get("status") == "no_anomalies":
-                self.stdout.write(self.style.SUCCESS(f"FIRMS Query OK: {res.get('message')}"))
-            elif dry_run:
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f"Dry run OK: {res['valid_records']} valid observations found ({res['skipped']} skipped)."
-                    )
+        if not res["success"]:
+            self.stdout.write(self.style.ERROR(f"Acquisition failed: {res.get('error')}"))
+            if sample_fallback:
+                fallback_csv = os.path.join("hotspots", "data", "historical_firms_nainital_sample.csv")
+                self.stdout.write(self.style.NOTICE(f"Executing offline demonstration fallback using '{fallback_csv}'..."))
+                fb_res = import_observations_from_csv(
+                    fallback_csv,
+                    default_data_nature="historical",
+                    dry_run=dry_run,
+                    filter_bounds=filter_bounds,
                 )
-            else:
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f"Live sync complete: {res['created']} created, {res['updated']} updated, {res['skipped']} skipped."
+                if fb_res["success"]:
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"Offline fallback loaded: {fb_res.get('created', 0)} created, {fb_res.get('updated', 0)} updated (classified as 'historical')."
+                        )
                     )
-                )
+                else:
+                    self.stdout.write(self.style.ERROR(f"Fallback import failed: {fb_res.get('error')}"))
             return
 
-        # If we reached here, live fetch did not succeed
-        self.stdout.write(self.style.WARNING(f"Live FIRMS fetch failed ({res.get('status')}): {res.get('error')}"))
-
-        if sample_fallback:
-            fallback_csv = os.path.join("hotspots", "data", "historical_firms_nainital_sample.csv")
-            self.stdout.write(self.style.NOTICE(f"Executing offline demonstration fallback using '{fallback_csv}'..."))
-            fb_res = import_observations_from_csv(
-                fallback_csv,
-                default_data_nature="historical",
-                dry_run=dry_run,
-                filter_bounds=filter_bounds,
-            )
-            if fb_res["success"]:
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f"Offline fallback loaded: {fb_res.get('created', 0)} created, {fb_res.get('updated', 0)} updated (classified as 'historical')."
-                    )
+        if res.get("status") == "no_anomalies":
+            self.stdout.write(self.style.SUCCESS(f"FIRMS Query OK: {res.get('message')}"))
+        elif dry_run:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Dry run successful: {res.get('total_records', res.get('total_rows', 0))} records fetched, "
+                    f"{res.get('valid_records', 0)} valid inside boundary, {res.get('skipped', 0)} skipped."
                 )
-            else:
-                self.stdout.write(self.style.ERROR(f"Fallback import failed: {fb_res.get('error')}"))
+            )
         else:
             self.stdout.write(
-                self.style.NOTICE(
-                    "To use offline sample data, rerun with --sample-fallback, or configure FIRMS_MAP_KEY."
+                self.style.SUCCESS(
+                    f"Acquisition completed: {res.get('total_records', res.get('total_rows', 0))} fetched, {res.get('created', 0)} created, "
+                    f"{res.get('updated', 0)} updated, {res.get('skipped', 0)} skipped."
                 )
             )
+
+        if res.get("errors"):
+            self.stdout.write(self.style.WARNING("Validation notes / warnings:"))
+            for err in res["errors"]:
+                self.stdout.write(f"  - {err}")

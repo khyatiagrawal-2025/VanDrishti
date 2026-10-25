@@ -50,6 +50,47 @@ KNOWN_FOREST_RANGES = [
 ]
 
 
+def in_nainital_bounds(lat_or_record, lng=None):
+    """
+    Check if a coordinate pair (latitude, longitude) or an observation object/dict
+    falls within the Nainital Forest Division bounding box.
+
+    Accepts:
+    - Two positional args: in_nainital_bounds(lat, lng)
+    - A dict: in_nainital_bounds({'latitude': ..., 'longitude': ...})
+    - A model instance: in_nainital_bounds(observation_obj)
+    """
+    if lng is None:
+        if isinstance(lat_or_record, dict):
+            lat = lat_or_record.get("latitude") if "latitude" in lat_or_record else lat_or_record.get("lat")
+            lng = (
+                lat_or_record.get("longitude")
+                if "longitude" in lat_or_record
+                else (lat_or_record.get("lng") or lat_or_record.get("lon"))
+            )
+        else:
+            lat = getattr(lat_or_record, "latitude", None)
+            if lat is None:
+                lat = getattr(lat_or_record, "lat", None)
+            lng = getattr(lat_or_record, "longitude", None)
+            if lng is None:
+                lng = getattr(lat_or_record, "lng", None)
+                if lng is None:
+                    lng = getattr(lat_or_record, "lon", None)
+    else:
+        lat = lat_or_record
+
+    try:
+        f_lat = float(lat)
+        f_lng = float(lng)
+        return (
+            NAINITAL_BOUNDS["min_lat"] <= f_lat <= NAINITAL_BOUNDS["max_lat"]
+            and NAINITAL_BOUNDS["min_lng"] <= f_lng <= NAINITAL_BOUNDS["max_lng"]
+        )
+    except (ValueError, TypeError):
+        return False
+
+
 def haversine_distance_km(lat1, lon1, lat2, lon2):
     """
     Calculate the great circle distance in kilometers between two points
@@ -371,19 +412,7 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
     # 5. Forest-Area Overlap (10% weight)
     # -------------------------------------------------------------------------
     forest_match = False
-    in_nainital_bounds = False
-
-    if lat is not None and lng is not None:
-        try:
-            f_lat = float(lat)
-            f_lng = float(lng)
-            if (
-                NAINITAL_BOUNDS["min_lat"] <= f_lat <= NAINITAL_BOUNDS["max_lat"]
-                and NAINITAL_BOUNDS["min_lng"] <= f_lng <= NAINITAL_BOUNDS["max_lng"]
-            ):
-                in_nainital_bounds = True
-        except (ValueError, TypeError):
-            in_nainital_bounds = False
+    is_in_bounds = in_nainital_bounds(lat, lng)
 
     # Check known reserve forest ranges
     check_text = (location_name + " " + forest_range).lower()
@@ -392,13 +421,13 @@ def calculate_priority_score(observation, all_observations=None, reference_time=
             forest_match = True
             break
 
-    if in_nainital_bounds and forest_match:
+    if is_in_bounds and forest_match:
         fo_pts = 10.0
         fo_expl = "Coordinates inside Nainital Forest Division reserve canopy"
         raw_fo = forest_range or "Reserve Forest"
         fo_status = "available"
         available_weight += WEIGHT_FOREST_OVERLAP
-    elif in_nainital_bounds:
+    elif is_in_bounds:
         fo_pts = 7.0
         fo_expl = "Within Nainital Division boundary (forest compartment verification pending)"
         raw_fo = "Division Boundary"

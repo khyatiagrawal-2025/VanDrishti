@@ -32,9 +32,18 @@ class Command(BaseCommand):
             help="Validate CSV and print statistics without saving to database",
         )
         parser.add_argument(
+            "--no-filter-bounds",
+            dest="filter_bounds",
+            action="store_false",
+            default=True,
+            help="Do not filter out observations falling outside Nainital boundary",
+        )
+        parser.add_argument(
             "--filter-bounds",
+            dest="filter_bounds",
             action="store_true",
-            help="Only import observations strictly within the documented Nainital district boundary",
+            default=True,
+            help="Only import observations strictly within the documented Nainital district boundary (default: True)",
         )
 
     def handle(self, *args, **options):
@@ -42,7 +51,7 @@ class Command(BaseCommand):
         data_type = options["data_type"]
         clear = options["clear"]
         dry_run = options["dry_run"]
-        filter_bounds = options.get("filter_bounds", False)
+        filter_bounds = options.get("filter_bounds", True)
 
         if clear:
             count = Observation.objects.count()
