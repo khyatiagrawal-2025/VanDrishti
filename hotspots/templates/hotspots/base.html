@@ -1,0 +1,315 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}VanDrishti | Forest Intelligence Command Center{% endblock %}</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
+    <!-- Leaflet 1.9.4 CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
+    <!-- Project CSS -->
+    <link rel="stylesheet" href="{% static 'hotspots/css/style.css' %}">
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="vd-app-body">
+
+    <!-- Mobile Navigation Overlay -->
+    <div class="vd-overlay" id="vdOverlay" aria-hidden="true"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="vd-sidebar" id="vdSidebar" aria-label="Main Navigation">
+        <!-- Brand Header -->
+        <div class="vd-brand-wrap">
+            <a href="/" class="vd-brand" title="VanDrishti - Forest Intelligence Platform">
+                <div class="vd-brand-logo">
+                    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" class="vd-logo-svg" aria-hidden="true">
+                        <!-- Radar wave circles -->
+                        <circle cx="16" cy="16" r="14" stroke="#39A875" stroke-width="1.2" stroke-opacity="0.35" stroke-dasharray="2 3" />
+                        <circle cx="16" cy="16" r="9.5" stroke="#39A875" stroke-width="1.4" stroke-opacity="0.6" />
+                        <!-- Forest Tree Graphic -->
+                        <path d="M16 4L9 14H13L7 22H14.5V28H17.5V22H25L19 14H23L16 4Z" fill="#39A875" />
+                        <!-- Satellite beacon point -->
+                        <circle cx="23.5" cy="8.5" r="2.2" fill="#E8A33E" />
+                        <circle cx="23.5" cy="8.5" r="4.2" stroke="#E8A33E" stroke-width="0.8" stroke-opacity="0.75" class="vd-ping-ring" />
+                    </svg>
+                </div>
+                <div class="vd-brand-text">
+                    <span class="vd-brand-name">VanDrishti</span>
+                    <span class="vd-brand-sub">Forest Intelligence</span>
+                </div>
+            </a>
+            <button class="vd-sidebar-collapse-btn d-none d-lg-inline-flex" id="vdSidebarCollapseToggle" aria-label="Collapse sidebar" title="Collapse sidebar">
+                <i class="bi bi-chevron-bar-left"></i>
+            </button>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="vd-nav-menu">
+            <div class="vd-nav-section-label">MONITORING</div>
+            <ul class="vd-nav-list">
+                <li class="vd-nav-item">
+                    <a class="vd-nav-link {% if active_page == 'dashboard' or not active_page %}active{% endif %}" href="/" id="navLinkDashboard">
+                        <span class="vd-nav-icon"><i class="bi bi-grid-1x2-fill"></i></span>
+                        <span class="vd-nav-label">Dashboard</span>
+                        <span class="vd-nav-badge">Live</span>
+                    </a>
+                </li>
+                <li class="vd-nav-item">
+                    <a class="vd-nav-link {% if active_page == 'hotspots' %}active{% endif %}" href="/hotspots/" id="navLinkHotspots">
+                        <span class="vd-nav-icon"><i class="bi bi-fire"></i></span>
+                        <span class="vd-nav-label">Hotspots &amp; Cases</span>
+                        {% if high_priority_count %}
+                        <span class="vd-nav-count-badge">{{ high_priority_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li class="vd-nav-item">
+                    <a class="vd-nav-link" href="#mapSection" id="navLinkMap">
+                        <span class="vd-nav-icon"><i class="bi bi-map-fill"></i></span>
+                        <span class="vd-nav-label">Observation Map</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="vd-nav-section-label mt-4">TERRITORY</div>
+            <div class="vd-territory-pill">
+                <div class="vd-territory-icon"><i class="bi bi-geo-alt-fill"></i></div>
+                <div class="vd-territory-info">
+                    <span class="vd-territory-title">Nainital Division</span>
+                    <span class="vd-territory-subtitle">Kumaon Circle, UK</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Sidebar Footer -->
+        <div class="vd-sidebar-footer">
+            <div class="vd-footer-brand">
+                <span class="vd-division-tag">Nainital Forest Division</span>
+                <span class="vd-version-tag">Uttarakhand, India · v1.0 Ops</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <div class="vd-main-workspace" id="vdMainWorkspace">
+
+        <!-- Top Navigation Bar -->
+        <header class="vd-topbar">
+            <div class="vd-topbar-left">
+                <!-- Mobile Sidebar Toggle -->
+                <button class="vd-btn-icon d-lg-none" type="button" id="vdSidebarToggle" aria-label="Open sidebar menu">
+                    <i class="bi bi-list"></i>
+                </button>
+
+                <!-- Breadcrumb & Workspace Info -->
+                <div class="vd-topbar-breadcrumb">
+                    <span class="vd-badge-division">
+                        <i class="bi bi-shield-shaded me-1"></i>Nainital Forest Division
+                    </span>
+                    <span class="vd-breadcrumb-divider">/</span>
+                    <span class="vd-breadcrumb-page">Forest Intelligence Command</span>
+                </div>
+            </div>
+
+            <!-- Topbar Right Controls -->
+            <div class="vd-topbar-right">
+                <!-- Data Sync Status Pill -->
+                <div class="vd-sync-status-pill {% if is_connected %}vd-sync-live{% else %}vd-sync-disconnected{% endif %}" id="vdSyncStatusPill" title="Satellite Ingestion Status">
+                    <span class="vd-status-pulse-dot"></span>
+                    <span class="vd-sync-text" id="vdSyncStatusText">
+                        {% if is_connected %}Telemetry Active{% else %}Data Inactive{% endif %}
+                    </span>
+                </div>
+
+                <!-- Last Update Timestamp Badge -->
+                <div class="vd-last-update-chip d-none d-md-flex" title="Last successful satellite pass">
+                    <i class="bi bi-clock-history me-1"></i>
+                    <span id="vdLastUpdateLabel">
+                        {% if last_sync_time %}
+                            {{ last_sync_time|date:"H:i UTC · M d" }}
+                        {% else %}
+                            Awaiting satellite pass
+                        {% endif %}
+                    </span>
+                </div>
+
+                <!-- Supported Real Refresh Action Button -->
+                <button type="button" class="vd-btn-sync" id="vdBtnSyncTelemetry" title="Synchronize latest satellite observations">
+                    <i class="bi bi-arrow-clockwise vd-sync-icon" id="vdSyncIcon"></i>
+                    <span class="d-none d-sm-inline">Sync Telemetry</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dynamic Page Content -->
+        <main class="vd-page-content" id="vdPageContent">
+            {% block content %}
+            {% endblock %}
+        </main>
+
+        <!-- Command Center Footer -->
+        <footer class="vd-app-footer">
+            <div class="vd-footer-inner">
+                <div class="vd-footer-copyright">
+                    <strong>VanDrishti</strong> &mdash; Satellite-Assisted Forest Fire Monitoring &amp; Response Prioritisation System.
+                </div>
+                <div class="vd-footer-meta">
+                    <span>Nainital Forest Division, Uttarakhand</span>
+                    <span class="mx-2">&bull;</span>
+                    <span>NASA FIRMS &bull; MODIS &bull; VIIRS</span>
+                </div>
+            </div>
+        </footer>
+
+    </div>
+
+    <!-- Observation Details Slide-Out Drawer -->
+    <div class="vd-drawer-backdrop" id="vdDrawerBackdrop" aria-hidden="true"></div>
+    <aside class="vd-drawer" id="vdObservationDrawer" role="dialog" aria-labelledby="drawerTitle" aria-hidden="true">
+        <div class="vd-drawer-header">
+            <div class="vd-drawer-header-info">
+                <span class="vd-drawer-badge" id="drawerPriorityBadge">High Priority</span>
+                <span class="vd-drawer-status-badge" id="drawerStatusBadge">Under Review</span>
+                <h2 class="vd-drawer-title" id="drawerTitle">Observation Details</h2>
+            </div>
+            <button class="vd-drawer-close-btn" id="vdDrawerCloseBtn" aria-label="Close details drawer">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        <div class="vd-drawer-body">
+            <!-- Fast Action Banner -->
+            <div class="vd-drawer-alert mb-3" id="drawerAlertBox">
+                <i class="bi bi-info-circle-fill me-2"></i>
+                <span id="drawerAlertText">Satellite thermal anomaly detected. Verification recommended before deployment.</span>
+            </div>
+
+            <!-- Geospatial Coordinates Section -->
+            <div class="vd-drawer-card mb-3">
+                <div class="vd-drawer-card-title">
+                    <i class="bi bi-geo-alt-fill me-2 text-forest"></i>Geographic Location
+                </div>
+                <div class="vd-drawer-grid">
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Location / Landmark</span>
+                        <span class="vd-meta-value fw-semibold" id="drawerLocationName">&ndash;</span>
+                    </div>
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Forest Range</span>
+                        <span class="vd-meta-value" id="drawerForestRange">&ndash;</span>
+                    </div>
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Coordinates</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="vd-meta-value font-monospace" id="drawerCoordinates">&ndash;</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary vd-btn-copy" id="btnCopyCoords" title="Copy coordinates">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Focus On Map</span>
+                        <button type="button" class="btn btn-sm btn-outline-success w-100" id="btnPanToMap">
+                            <i class="bi bi-crosshair me-1"></i>Center in View
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Satellite Telemetry Section -->
+            <div class="vd-drawer-card mb-3">
+                <div class="vd-drawer-card-title">
+                    <i class="bi bi-satellite me-2 text-forest"></i>Satellite Telemetry
+                </div>
+                <div class="vd-drawer-grid">
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Detection Time (UTC)</span>
+                        <span class="vd-meta-value font-monospace" id="drawerDetectedAt">&ndash;</span>
+                    </div>
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Instrument / Platform</span>
+                        <span class="vd-meta-value" id="drawerSatelliteSource">&ndash;</span>
+                    </div>
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Confidence Score</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="progress flex-grow-1" style="height: 7px; background: #EAF1E8;">
+                                <div class="progress-bar bg-success" id="drawerConfidenceBar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <span class="vd-meta-value font-monospace fw-bold" id="drawerConfidence">&ndash;</span>
+                        </div>
+                    </div>
+                    <div class="vd-meta-cell">
+                        <span class="vd-meta-label">Brightness Temp / FRP</span>
+                        <span class="vd-meta-value font-monospace" id="drawerTempFRP">&ndash;</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Operational Notes & Field Guidance -->
+            <div class="vd-drawer-card mb-3">
+                <div class="vd-drawer-card-title">
+                    <i class="bi bi-journal-text me-2 text-forest"></i>Operational Assessment
+                </div>
+                <p class="vd-drawer-notes mb-0" id="drawerNotes">
+                    No field notes recorded.
+                </p>
+            </div>
+
+            <!-- Status Indicator -->
+            <div class="vd-drawer-footer-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="vd-meta-label d-block">Verification Workflow</span>
+                        <span class="small text-muted">Field review assigned via beat watchtower</span>
+                    </div>
+                    <span class="badge bg-secondary-subtle text-secondary" id="drawerWorkflowStatus">Logged</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Toast Notification Container for Live Telemetry Feedback -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+        <div id="vdAppToast" class="toast align-items-center text-bg-success border-0 shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2">
+                    <i class="bi bi-check-circle-fill fs-5" id="toastIcon"></i>
+                    <span id="toastMessage">Telemetry updated.</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Chart.js 4.4 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- Data Injection for Client Dashboard Script -->
+    <script id="vdObservationsData" type="application/json">
+        {{ observations_json|default:"[]"|safe }}
+    </script>
+
+    <!-- Core Project Dashboard Script -->
+    <script src="{% static 'hotspots/js/dashboard.js' %}"></script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

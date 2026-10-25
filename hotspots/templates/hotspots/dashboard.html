@@ -1,109 +1,581 @@
+{% extends 'hotspots/base.html' %}
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VanDrishti | Forest Monitoring</title>
-    <style>
-        * { box-sizing: border-box; }
+{% block title %}Dashboard | VanDrishti Forest Intelligence{% endblock %}
 
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f4f7f2;
-            color: #203329;
-        }
+{% block content %}
 
-        header {
-            background: #183c2b;
-            color: white;
-            padding: 22px 7%;
-        }
+<!-- Dashboard Page Header -->
+<div class="vd-dashboard-header animate-fade-in">
+    <div class="vd-header-main">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="vd-pill-indicator">
+                <span class="vd-pulse-ring"></span>
+                <span class="vd-pulse-core"></span>
+            </span>
+            <span class="vd-caption-label">SATELLITE SURVEILLANCE &bull; NAINITAL FOREST DIVISION</span>
+        </div>
+        <h1 class="vd-page-heading">Forest Monitoring &amp; Hotspot Intelligence</h1>
+        <p class="vd-page-subtext">
+            Continuous infrared anomaly detection, terrain-calibrated priority ranking, and forest response tracking across the Nainital Division, Uttarakhand.
+        </p>
+    </div>
+    <div class="vd-header-actions">
+        <div class="vd-station-card">
+            <div class="vd-station-icon"><i class="bi bi-broadcast"></i></div>
+            <div class="vd-station-details">
+                <span class="vd-station-title">Station: China Peak / Nainital</span>
+                <span class="vd-station-meta">Coverage: 29.38°N, 79.46°E &bull; Elevation: 2,084m</span>
+            </div>
+        </div>
+    </div>
+</div>
 
-        header h1 { margin: 0 0 8px; }
-        header p { margin: 0; color: #d6e6d9; }
+<!-- Advisory Banner: Anomalies Require Field Verification -->
+<div class="vd-advisory-banner animate-slide-up" role="note">
+    <div class="vd-advisory-icon">
+        <i class="bi bi-shield-exclamation"></i>
+    </div>
+    <div class="vd-advisory-text">
+        <strong>Field Verification Protocol:</strong> Satellite observations represent thermal anomalies detected via spaceborne radiometers (NASA FIRMS MODIS/VIIRS). Each anomaly requires beat guard line-of-sight check before operational crew dispatch.
+    </div>
+    <div class="vd-advisory-tag">Operational SOP</div>
+</div>
 
-        main {
-            max-width: 1150px;
-            margin: 35px auto;
-            padding: 0 22px;
-        }
+<!-- KPI Metric Cards Grid (Staggered Animation) -->
+<div class="row g-3 mb-4 vd-kpi-grid">
 
-        .intro {
-            background: white;
-            padding: 28px;
-            border-radius: 14px;
-            border: 1px solid #dce5dc;
-        }
+    <!-- KPI 1: Total Observations -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="vd-kpi-card card-accent-green vd-kpi-stagger-1">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">TOTAL OBSERVATIONS</span>
+                <span class="vd-kpi-icon-wrap bg-green-subtle">
+                    <i class="bi bi-radar text-forest"></i>
+                </span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value-row">
+                    <span class="vd-kpi-value text-forest" id="summaryObservations">{{ total_observations }}</span>
+                    <span class="vd-kpi-badge">Division Total</span>
+                </div>
+                <p class="vd-kpi-caption">
+                    {% if total_observations > 0 %}
+                        Recorded thermal anomalies within district boundary
+                    {% else %}
+                        No satellite thermal anomalies detected
+                    {% endif %}
+                </p>
+            </div>
+            <div class="vd-kpi-footer">
+                <i class="bi bi-bounding-box-circles me-1"></i>Nainital Boundary Filter
+            </div>
+        </div>
+    </div>
 
-        .intro h2 { margin-top: 0; }
+    <!-- KPI 2: High Priority -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="vd-kpi-card card-accent-terracotta vd-kpi-stagger-2">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">HIGH-PRIORITY ALERTS</span>
+                <span class="vd-kpi-icon-wrap bg-terracotta-subtle">
+                    <i class="bi bi-fire text-critical"></i>
+                </span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value-row">
+                    <span class="vd-kpi-value text-critical" id="summaryHighPriority">{{ high_priority_count }}</span>
+                    {% if high_priority_count > 0 %}
+                    <span class="vd-kpi-badge badge-critical">Action Needed</span>
+                    {% else %}
+                    <span class="vd-kpi-badge badge-neutral">Normal</span>
+                    {% endif %}
+                </div>
+                <p class="vd-kpi-caption">
+                    {% if high_priority_count > 0 %}
+                        Immediate field inspection recommended
+                    {% else %}
+                        Zero critical thermal anomalies
+                    {% endif %}
+                </p>
+            </div>
+            <div class="vd-kpi-footer">
+                <i class="bi bi-exclamation-triangle me-1"></i>High slope / Chir pine risk
+            </div>
+        </div>
+    </div>
 
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 18px;
-            margin-top: 22px;
-        }
+    <!-- KPI 3: Cases Under Review -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="vd-kpi-card card-accent-amber vd-kpi-stagger-3">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">CASES UNDER REVIEW</span>
+                <span class="vd-kpi-icon-wrap bg-amber-subtle">
+                    <i class="bi bi-clipboard2-check text-warning-amber"></i>
+                </span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value-row">
+                    <span class="vd-kpi-value text-warning-amber" id="summaryCases">{{ cases_under_review_count }}</span>
+                    <span class="vd-kpi-badge badge-amber">Field Review</span>
+                </div>
+                <p class="vd-kpi-caption">
+                    {% if cases_under_review_count > 0 %}
+                        Assigned to beat range officers
+                    {% else %}
+                        No active cases awaiting review
+                    {% endif %}
+                </p>
+            </div>
+            <div class="vd-kpi-footer">
+                <i class="bi bi-shield-check me-1"></i>Kumaon circle dispatch
+            </div>
+        </div>
+    </div>
 
-        .card {
-            background: white;
-            padding: 22px;
-            border: 1px solid #dce5dc;
-            border-radius: 12px;
-        }
+    <!-- KPI 4: Satellite Telemetry Update -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="vd-kpi-card card-accent-sage vd-kpi-stagger-4">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">TELEMETRY INGESTION</span>
+                <span class="vd-kpi-icon-wrap bg-sage-subtle">
+                    <i class="bi bi-satellite text-forest"></i>
+                </span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value-row">
+                    <span class="vd-kpi-value fs-5" id="summaryLastUpdate">
+                        {% if last_sync_time %}
+                            {{ last_sync_time|date:"H:i UTC" }}
+                        {% else %}
+                            Awaiting Feed
+                        {% endif %}
+                    </span>
+                    <span class="vd-kpi-badge {% if is_connected %}badge-green{% else %}badge-neutral{% endif %}">
+                        {% if is_connected %}NASA FIRMS{% else %}Standby{% endif %}
+                    </span>
+                </div>
+                <p class="vd-kpi-caption">
+                    {% if last_sync_time %}
+                        Updated {{ last_sync_time|date:"M d, Y" }}
+                    {% else %}
+                        Data source not connected
+                    {% endif %}
+                </p>
+            </div>
+            <div class="vd-kpi-footer">
+                <i class="bi bi-clock-history me-1"></i>MODIS Terra/Aqua &bull; VIIRS
+            </div>
+        </div>
+    </div>
 
-        .card h3 { margin-top: 0; }
-        .status { color: #647568; font-size: 14px; }
+</div>
 
-        footer {
-            padding: 25px;
-            text-align: center;
-            color: #647568;
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <h1>🌲 VanDrishti</h1>
-        <p>Detect Early. Prioritise Smarter. Protect Forests.</p>
-    </header>
+<!-- Centerpiece Map and Priority Stratification -->
+<div class="row g-3 mb-4" id="mapSection">
 
-    <main>
-        <section class="intro">
-            <h2>Forest Fire Monitoring Dashboard</h2>
-            <p>
-                A satellite-data-driven monitoring and response
-                prioritisation prototype for Nainital, Uttarakhand.
-            </p>
-            <p><strong>Development status:</strong> Initial dashboard</p>
-        </section>
+    <!-- Interactive Leaflet Map for Nainital Forest Division -->
+    <div class="col-12 col-xl-8">
+        <div class="vd-panel-card h-100">
+            <div class="vd-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="vd-panel-title">
+                        <i class="bi bi-map me-2 text-forest"></i>Observation Map &mdash; Nainital Forest Division
+                    </span>
+                    <span class="badge vd-badge-live" id="mapAnomalyCountBadge">
+                        {{ total_observations }} Anomaly Marker{% if total_observations != 1 %}s{% endif %}
+                    </span>
+                </div>
+                <!-- Map Actions & Layer Controls -->
+                <div class="vd-map-controls-group">
+                    <button type="button" class="btn btn-sm btn-outline-secondary vd-map-btn" id="btnResetMapView" title="Reset map view to Nainital Center">
+                        <i class="bi bi-arrows-fullscreen me-1"></i>Reset View
+                    </button>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Map Basemap Switcher">
+                        <button type="button" class="btn btn-outline-secondary active" id="btnLayerVoyager" title="Voyager Clean Map">Voyager</button>
+                        <button type="button" class="btn btn-outline-secondary" id="btnLayerTopo" title="Topographic Elevation Map">Topo</button>
+                        <button type="button" class="btn btn-outline-secondary" id="btnLayerOSM" title="OpenStreetMap">OSM</button>
+                    </div>
+                </div>
+            </div>
 
-        <section class="cards">
-            <article class="card">
-                <h3>Satellite Observations</h3>
-                <p class="status">Data source integration pending</p>
-            </article>
+            <div class="vd-panel-body p-0 position-relative">
+                <!-- Interactive Leaflet Map Mount Point -->
+                <div id="dashboardMap" class="vd-leaflet-map-container" style="min-height: 480px; width: 100%;">
+                    <!-- Fallback while tiles load -->
+                    <div class="vd-map-loading" id="mapLoadingSpinner">
+                        <div class="spinner-border text-forest spinner-border-sm me-2" role="status"></div>
+                        <span>Initializing geospatial surveillance layers...</span>
+                    </div>
+                </div>
 
-            <article class="card">
-                <h3>Priority Assessment</h3>
-                <p class="status">Scoring system not implemented yet</p>
-            </article>
+                <!-- Floating Coordinates HUD -->
+                <div class="vd-map-coords-hud" id="mapCoordsHud">
+                    <i class="bi bi-cursor-fill me-1"></i>
+                    <span id="mapCoordsText">29.3803° N, 79.4636° E &bull; Nainital Division</span>
+                </div>
 
-            <article class="card">
-                <h3>Interactive Map</h3>
-                <p class="status">Map integration pending</p>
-            </article>
+                <!-- Floating Map Legend -->
+                <div class="vd-map-legend" id="mapLegend">
+                    <div class="vd-legend-title">Observation Priority</div>
+                    <div class="vd-legend-item">
+                        <span class="vd-legend-dot dot-critical"></span>
+                        <span>High Priority</span>
+                    </div>
+                    <div class="vd-legend-item">
+                        <span class="vd-legend-dot dot-amber"></span>
+                        <span>Medium Priority</span>
+                    </div>
+                    <div class="vd-legend-item">
+                        <span class="vd-legend-dot dot-emerald"></span>
+                        <span>Low Priority</span>
+                    </div>
+                    <div class="vd-legend-divider"></div>
+                    <div class="vd-legend-item">
+                        <span class="vd-legend-boundary"></span>
+                        <span>Division Boundary</span>
+                    </div>
+                </div>
 
-            <article class="card">
-                <h3>Response Cases</h3>
-                <p class="status">Case management not implemented yet</p>
-            </article>
-        </section>
-    </main>
+                <!-- Empty State Overlay on Map (when 0 observations) -->
+                {% if total_observations == 0 %}
+                <div class="vd-map-empty-overlay" id="mapEmptyOverlay">
+                    <div class="vd-empty-box">
+                        <div class="vd-empty-icon"><i class="bi bi-shield-check"></i></div>
+                        <h5>No Active Thermal Anomalies</h5>
+                        <p class="text-muted small mb-0">
+                            Satellite passes detected zero high-radiance thermal signatures in Nainital Forest Division.
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
 
-    <footer>
-        VanDrishti · Software prototype · Nainital, Uttarakhand
-    </footer>
-</body>
-</html>
+            <div class="vd-panel-footer d-flex flex-wrap justify-content-between align-items-center">
+                <span>
+                    <i class="bi bi-info-circle me-1"></i>Markers represent infrared thermal anomalies awaiting field review, not confirmed fires.
+                </span>
+                <span class="vd-footer-coords font-monospace">Nainital Center: 29.3803°N, 79.4636°E</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Priority Distribution Analytics Panel -->
+    <div class="col-12 col-xl-4">
+        <div class="vd-panel-card h-100 d-flex flex-column">
+            <div class="vd-panel-header d-flex justify-content-between align-items-center">
+                <span class="vd-panel-title">
+                    <i class="bi bi-pie-chart me-2 text-forest"></i>Priority Stratification
+                </span>
+                <span class="badge vd-badge-subtle">Terrain-Weighted</span>
+            </div>
+
+            <div class="vd-panel-body flex-grow-1 d-flex flex-column">
+                <p class="vd-caption-subtext mb-3">
+                    Calculated from satellite Fire Radiative Power (FRP), detection confidence, and Nainital slope exposure.
+                </p>
+
+                <!-- Chart Canvas Area -->
+                <div class="vd-chart-wrapper position-relative flex-grow-1 d-flex align-items-center justify-content-center" style="min-height: 250px;">
+                    <canvas id="priorityChart" aria-label="Priority distribution chart" role="img"></canvas>
+
+                    <!-- Chart Empty State -->
+                    <div class="vd-chart-empty-state {% if total_observations > 0 %}d-none{% endif %}" id="priorityChartEmpty">
+                        <div class="vd-chart-empty-graphic">
+                            <i class="bi bi-bar-chart-line"></i>
+                        </div>
+                        <p class="small text-muted mb-0">No priority data to plot</p>
+                        <span class="vd-chart-empty-hint">Awaiting scored satellite observations</span>
+                    </div>
+                </div>
+
+                <!-- Real Priority Breakdown Metric List -->
+                <div class="vd-priority-breakdown mt-3">
+                    <div class="vd-breakdown-row" data-priority="high">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="status-dot status-dot-high"></span>
+                            <span class="vd-breakdown-label">High Priority</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="vd-breakdown-count fw-bold text-critical" id="countHigh">{{ high_priority_count }}</span>
+                            <span class="vd-breakdown-pct text-muted small" id="pctHigh">
+                                {% if total_observations > 0 %}
+                                    ({% widthratio high_priority_count total_observations 100 %}%)
+                                {% else %}
+                                    (0%)
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="vd-breakdown-row" data-priority="medium">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="status-dot status-dot-medium"></span>
+                            <span class="vd-breakdown-label">Medium Priority</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="vd-breakdown-count fw-bold text-warning-amber" id="countMedium">{{ medium_priority_count }}</span>
+                            <span class="vd-breakdown-pct text-muted small" id="pctMedium">
+                                {% if total_observations > 0 %}
+                                    ({% widthratio medium_priority_count total_observations 100 %}%)
+                                {% else %}
+                                    (0%)
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="vd-breakdown-row" data-priority="low">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="status-dot status-dot-low"></span>
+                            <span class="vd-breakdown-label">Low Priority</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="vd-breakdown-count fw-bold text-forest" id="countLow">{{ low_priority_count }}</span>
+                            <span class="vd-breakdown-pct text-muted small" id="pctLow">
+                                {% if total_observations > 0 %}
+                                    ({% widthratio low_priority_count total_observations 100 %}%)
+                                {% else %}
+                                    (0%)
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vd-panel-footer">
+                <span class="small text-muted">
+                    Total Monitored Hotspots: <strong id="chartTotalCount">{{ total_observations }}</strong>
+                </span>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Observations Management Section -->
+<div class="vd-panel-card mb-4" id="observationsSection">
+    <div class="vd-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="vd-panel-title">
+                <i class="bi bi-table me-2 text-forest"></i>Recent Satellite Observations
+            </span>
+            <span class="badge vd-badge-count">
+                Showing <span id="dashboardResultCount">{{ total_observations }}</span> of {{ total_observations }}
+            </span>
+        </div>
+        <div class="vd-table-quick-actions">
+            <span class="vd-caption-subtext d-none d-md-inline">Click any row to open observation details</span>
+        </div>
+    </div>
+
+    <div class="vd-panel-body">
+
+        <!-- Search and Filter Controls Bar -->
+        <form class="vd-filter-toolbar" id="dashboardFilterForm" onsubmit="return false;" aria-label="Filter observations">
+            <div class="row g-2 align-items-end">
+
+                <!-- Search Input -->
+                <div class="col-12 col-md-4">
+                    <label for="dashboardSearch" class="form-label vd-field-label">Search Hotspots</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="search" id="dashboardSearch" class="form-control border-start-0 ps-0"
+                               placeholder="Search ID, landmark, or forest range..." autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- Priority Filter Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterPriority" class="form-label vd-field-label">Priority</label>
+                    <select id="filterPriority" class="form-select" data-vd-filter="priority">
+                        <option value="all" selected>All Priorities</option>
+                        <option value="high">High Priority</option>
+                        <option value="medium">Medium Priority</option>
+                        <option value="low">Low Priority</option>
+                    </select>
+                </div>
+
+                <!-- Review Status Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterStatus" class="form-label vd-field-label">Review Status</label>
+                    <select id="filterStatus" class="form-select" data-vd-filter="status">
+                        <option value="all" selected>All Statuses</option>
+                        <option value="new">New</option>
+                        <option value="under-review">Under Review</option>
+                        <option value="verified">Verified</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                </div>
+
+                <!-- Date Range Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterDate" class="form-label vd-field-label">Observation Window</label>
+                    <select id="filterDate" class="form-select" data-vd-filter="date-range">
+                        <option value="all" selected>All Time</option>
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d">Last 30 Days</option>
+                    </select>
+                </div>
+
+                <!-- Reset Filters Button -->
+                <div class="col-6 col-md-2">
+                    <button type="button" id="dashboardFilterReset" class="btn btn-outline-secondary w-100 vd-btn-reset">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Filters
+                    </button>
+                </div>
+
+            </div>
+        </form>
+
+        <!-- Observations Data Table -->
+        <div class="table-responsive vd-table-responsive">
+            <table class="table table-hover align-middle vd-data-table mb-0" id="observationsTable" data-vd-table>
+                <thead>
+                    <tr>
+                        <th scope="col" class="sortable" data-sort="id">
+                            Observation ID <i class="bi bi-arrow-down-up ms-1"></i>
+                        </th>
+                        <th scope="col" class="sortable" data-sort="date">
+                            Detected (UTC) <i class="bi bi-arrow-down-up ms-1"></i>
+                        </th>
+                        <th scope="col">Location &amp; Range</th>
+                        <th scope="col">Satellite Source</th>
+                        <th scope="col" class="sortable text-center" data-sort="confidence">
+                            Confidence <i class="bi bi-arrow-down-up ms-1"></i>
+                        </th>
+                        <th scope="col" class="sortable text-center" data-sort="priority">
+                            Priority <i class="bi bi-arrow-down-up ms-1"></i>
+                        </th>
+                        <th scope="col" class="text-center">Review Status</th>
+                        <th scope="col" class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="observationsTableBody">
+                    {% for obs in observations %}
+                    <tr class="vd-table-row"
+                        data-vd-item
+                        data-id="{{ obs.observation_id }}"
+                        data-priority="{{ obs.priority }}"
+                        data-status="{{ obs.status }}"
+                        data-date="{{ obs.detected_at|date:'c' }}"
+                        data-lat="{{ obs.latitude }}"
+                        data-lng="{{ obs.longitude }}"
+                        data-location="{{ obs.location_name }}"
+                        data-range="{{ obs.forest_range }}"
+                        data-source="{{ obs.satellite_source }}"
+                        data-confidence="{{ obs.confidence|default:0 }}"
+                        data-temp="{{ obs.brightness_temp_k|default:'' }}"
+                        data-frp="{{ obs.frp_mw|default:'' }}"
+                        data-notes="{{ obs.notes }}"
+                        tabindex="0"
+                        role="button"
+                        aria-label="View observation {{ obs.observation_id }}">
+                        
+                        <!-- ID -->
+                        <td class="font-monospace fw-semibold text-forest">
+                            <span class="vd-id-badge">{{ obs.observation_id }}</span>
+                        </td>
+
+                        <!-- Detection Timestamp -->
+                        <td class="text-nowrap">
+                            <div class="vd-time-primary">{{ obs.detected_at|date:"M d, Y" }}</div>
+                            <div class="vd-time-secondary font-monospace">{{ obs.detected_at|date:"H:i" }} UTC</div>
+                        </td>
+
+                        <!-- Location & Range -->
+                        <td>
+                            <div class="fw-semibold text-dark">{{ obs.location_name }}</div>
+                            <div class="small text-muted"><i class="bi bi-pin-map me-1"></i>{{ obs.forest_range }}</div>
+                        </td>
+
+                        <!-- Satellite Instrument -->
+                        <td>
+                            <span class="vd-satellite-pill">
+                                <i class="bi bi-satellite me-1"></i>{{ obs.satellite_source }}
+                            </span>
+                        </td>
+
+                        <!-- Confidence Score -->
+                        <td class="text-center">
+                            {% if obs.confidence %}
+                            <div class="d-inline-flex align-items-center gap-1 font-monospace fw-semibold">
+                                <span>{{ obs.confidence }}%</span>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">&ndash;</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Priority Badge -->
+                        <td class="text-center">
+                            {% if obs.priority == 'high' %}
+                                <span class="badge vd-badge-priority badge-high">High</span>
+                            {% elif obs.priority == 'medium' %}
+                                <span class="badge vd-badge-priority badge-medium">Medium</span>
+                            {% else %}
+                                <span class="badge vd-badge-priority badge-low">Low</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Review Status Badge -->
+                        <td class="text-center">
+                            {% if obs.status == 'new' %}
+                                <span class="badge vd-badge-status status-new">New</span>
+                            {% elif obs.status == 'under-review' %}
+                                <span class="badge vd-badge-status status-review">Under Review</span>
+                            {% elif obs.status == 'verified' %}
+                                <span class="badge vd-badge-status status-verified">Verified</span>
+                            {% else %}
+                                <span class="badge vd-badge-status status-closed">Closed</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- View Details Action Button -->
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-success vd-btn-view-details" aria-label="Open details drawer">
+                                <i class="bi bi-eye me-1"></i>Details
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Filter / Search No Results State -->
+        <div id="dashboardNoResults" class="vd-empty-table-state {% if total_observations > 0 %}d-none{% endif %}">
+            <div class="vd-empty-table-inner">
+                <div class="vd-empty-icon-circle">
+                    <i class="bi bi-search"></i>
+                </div>
+                <h5>No Satellite Observations Found</h5>
+                <p class="text-muted small mb-3" id="emptyStateMessage">
+                    {% if total_observations == 0 %}
+                        No satellite thermal anomalies are currently recorded in the database. When the FIRMS ingestion pipeline operates, observations will automatically populate here.
+                    {% else %}
+                        No observations match the selected filter criteria. Try adjusting your search query, priority, or date range.
+                    {% endif %}
+                </p>
+                {% if total_observations > 0 %}
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnEmptyResetFilters">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Reset All Filters
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <div class="vd-panel-footer d-flex flex-wrap justify-content-between align-items-center">
+        <span class="small text-muted">
+            <i class="bi bi-database me-1"></i>Ingested via NASA FIRMS &bull; Nainital Spatial Bounding Box: [29.15°N, 79.10°E to 29.60°N, 79.75°E]
+        </span>
+        <span class="small text-muted">All thermal records are cataloged in UTC</span>
+    </div>
+</div>
+
+{% endblock %}
