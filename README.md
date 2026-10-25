@@ -1,12 +1,50 @@
+<div align="center">
+
+<img src="assets/vandrishti-banner.png" alt="VanDrishti: SPACE OUT 2026, Theme 4, Track 4.2" width="100%">
+
 # VanDrishti
 
-**Detect Early. Prioritise Smarter. Protect Forests.**
+### Detect Early. Prioritise Smarter. Protect Forests.
+
+Satellite hotspot prioritisation for forest-fire review in Nainital, Uttarakhand
+
+**SPACE OUT: Space Innovation Ideathon 2026 &nbsp;|&nbsp; Theme 4, Track 4.2 &nbsp;|&nbsp; Team Clock it &nbsp;|&nbsp; GLA University, Mathura**
+
+</div>
+
+---
 
 VanDrishti is a student prototype that turns satellite thermal-anomaly detections into a ranked, explainable review list for the Nainital region of Uttarakhand, India. It is a decision-support tool for organising human review. It does not confirm fires and does not predict them.
 
+## Contents
+
+1. [Event details](#event-details)
+2. [Overview](#overview)
+3. [Problem statement](#problem-statement)
+4. [Research question and objectives](#research-question-and-objectives)
+5. [Main workflow](#main-workflow)
+6. [Key features](#key-features-implemented)
+7. [System architecture](#system-architecture)
+8. [Repository structure](#repository-structure)
+9. [Technology stack](#technology-stack)
+10. [NASA FIRMS data source and geographic scope](#nasa-firms-data-source-and-geographic-scope)
+11. [Risk-prioritisation methodology](#risk-prioritisation-methodology)
+12. [Installation and setup](#installation-and-setup)
+13. [Environment-variable configuration](#environment-variable-configuration)
+14. [Database migrations and execution commands](#database-migrations-and-execution-commands)
+15. [Live hotspot data retrieval](#live-hotspot-data-retrieval)
+16. [Dashboard and API usage](#dashboard-and-api-usage)
+17. [Testing and validation](#testing-and-validation)
+18. [Actual results](#actual-results)
+19. [Limitations and safety boundaries](#limitations-and-safety-boundaries)
+20. [Future scope](#future-scope)
+21. [References and data-source credits](#references-and-data-source-credits)
+22. [Team members and responsibilities](#team-members-and-responsibilities)
+23. [Acknowledgement](#acknowledgement)
+
 ## Event details
 
-| | |
+| Item | Detail |
 |---|---|
 | Event | SPACE OUT: Space Innovation Ideathon 2026 |
 | Theme | Theme 4 (project relevance: satellite-based forest-fire hotspot monitoring and prioritisation) |
@@ -27,7 +65,7 @@ NASA FIRMS publishes near-real-time satellite fire detections. In a busy fire se
 
 ## Problem statement
 
-A satellite hotspot is a clue, not a confirmed fire. Farm, waste and other burning can look similar from space, and forest officials have publicly expected a large share of satellite alerts to be false (see reference 6). With limited people and time, the practical question is which hotspots to check first.
+A satellite hotspot is a clue, not a confirmed fire. Farm, waste and other burning can look similar from space, and forest officials have publicly expected a large share of satellite alerts to be false (see the ETV Bharat report in [References](#references-and-data-source-credits)). With limited people and time, the practical question is which hotspots to check first.
 
 ## Research question and objectives
 
@@ -45,12 +83,13 @@ Whether the ranking agrees with recorded forest-fire incidents has not been test
 
 ## Main workflow
 
-```
-NASA FIRMS (VIIRS / MODIS)  ->  validate + region filter  ->  explainable score  ->  dashboard + review cases
-        implemented                    implemented                 implemented             implemented
-
-                                  Proposed, not built: weather layer, Sentinel-2 context, drone verification
-```
+| Step | Stage | Status |
+|---:|---|---|
+| 1 | Retrieve NASA FIRMS detections (VIIRS / MODIS) for the Nainital bounding box | Implemented |
+| 2 | Validate, normalise and filter to the region | Implemented |
+| 3 | Compute the explainable priority score | Implemented |
+| 4 | Show ranked results on the map dashboard and track review cases | Implemented |
+| 5 | Weather layer, Sentinel-2 context, drone verification | Proposed, not built |
 
 ## Key features (implemented)
 
@@ -324,7 +363,7 @@ python manage.py check
 python manage.py test
 ```
 
-Results from running these on the current repository (Python 3.12.3, Django 6.1.2, in a sandbox with no outbound internet access):
+Results from running these on the repository snapshot used to prepare this README (Python 3.12.3, Django 6.1.2, on a machine with no outbound internet access):
 
 | Check | Result |
 |---|---|
@@ -332,7 +371,7 @@ Results from running these on the current repository (Python 3.12.3, Django 6.1.
 | `python manage.py makemigrations --check --dry-run` | No changes detected |
 | `python manage.py test` | 55 tests ran, 54 passed, 1 failed |
 
-The one failure is `test_api_map_tile_proxy_valid`. It requests a real tile from OpenStreetMap, so it fails when the machine has no internet access, and it should pass on a connected machine. This has not been re-run with internet access, so treat it as unconfirmed until you run it yourself.
+The one failure is `test_api_map_tile_proxy_valid`. It requests a real tile from OpenStreetMap, so it is expected to fail without internet access. It was not re-run on a connected machine, so its result there is unconfirmed.
 
 The tests cover models, scoring, the data pipeline, dashboard views, the API endpoints, response cases, management commands and mocked FIRMS responses. They check that the code behaves as written. They do not measure how well the ranking identifies real forest fires.
 
