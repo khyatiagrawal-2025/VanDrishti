@@ -158,7 +158,9 @@ MAILERS = {
 }
 
 
-# NASA FIRMS Integration
-FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", "").strip()
+# NASA FIRMS Satellite Telemetry API Settings
+FIRMS_MAP_KEY = (os.environ.get("FIRMS_MAP_KEY") or os.environ.get("NASA_FIRMS_API_KEY") or "").strip()
+FIRMS_API_BASE_URL = os.environ.get("FIRMS_API_BASE_URL", "https://firms.modaps.eosdis.nasa.gov/api").strip()
 FIRMS_DEFAULT_SOURCE = os.environ.get("FIRMS_DEFAULT_SOURCE", "VIIRS_NOAA20_NRT").strip()
+FIRMS_REQUEST_TIMEOUT = int(os.environ.get("FIRMS_REQUEST_TIMEOUT", "15"))
 NAINITAL_BBOX = os.environ.get("NAINITAL_BBOX", "79.10,29.10,79.80,29.65").strip()
