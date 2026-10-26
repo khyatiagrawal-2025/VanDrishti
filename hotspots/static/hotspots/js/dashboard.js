@@ -102,13 +102,19 @@
             // 1. Primary Road & Settlement Basemap: CARTO Voyager (OpenStreetMap Data)
             // Permitted, high-detail basemap providing real road names, highway labels, village settlements,
             // and topography relief in Nainital Division without 403 localhost rate-blocking
-            var osmLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
-                subdomains: "abcd",
-                minZoom: 8,
-                maxZoom: 20,
-                crossOrigin: true,
-            });
+
+            // 1. Street Map: OpenStreetMap tiles (no CARTO API key required)
+            var osmLayer = L.tileLayer(
+                "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+                    attribution:
+                        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+                    subdomains: "abc",
+                    minZoom: 8,
+                    maxZoom: 19,
+                }
+            );
+
 
             // 1b. Permitted Fallback Road Map: Esri World Street Map
             var esriStreetLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
@@ -128,11 +134,16 @@
 
             // 3. High-Resolution Aerial Satellite Imagery: Esri World Imagery
             // Visualizing the mountain terrain, forest canopy, and pine slopes across Nainital Division
-            var satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-                attribution: 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &bull; Source: Esri, Maxar, Earthstar Geographics',
-                minZoom: 8,
-                maxZoom: 19,
-            });
+
+            var osmLayer = L.tileLayer(
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+                {
+                    attribution:
+                        'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Sources: Esri, HERE, Garmin, OpenStreetMap contributors',
+                    maxZoom: 19
+                }
+            );
+
 
             appState.basemapLayers = {
                 osm: osmLayer,
@@ -182,6 +193,15 @@
                     if (consecutiveTileErrors === 0) clearTileError();
                 });
             }
+
+            var satelliteLayer = L.tileLayer(
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                {
+                    attribution: 'Tiles &copy; Esri',
+                    maxZoom: 19
+                }
+            );
+
 
             attachTileErrorHandling(osmLayer, "OpenStreetMap");
             attachTileErrorHandling(topoLayer, "OpenTopoMap");
@@ -327,9 +347,9 @@
         else if (priority === "low") pClass = "marker-low";
 
         var html = '<div class="vd-marker-pulse ' + pClass + '">' +
-                   '<div class="vd-marker-ring"></div>' +
-                   '<div class="vd-marker-core"></div>' +
-                   '</div>';
+            '<div class="vd-marker-ring"></div>' +
+            '<div class="vd-marker-core"></div>' +
+            '</div>';
 
         return L.divIcon({
             html: html,
@@ -349,7 +369,7 @@
                 var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
                 return d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
             }
-        } catch (e) {}
+        } catch (e) { }
         return escapeHtml(isoDate);
     }
 
@@ -420,21 +440,21 @@
 
             var popupContent = '<div class="vd-popup-card">' +
                 '<div class="vd-popup-header d-flex justify-content-between align-items-center mb-1">' +
-                    '<span class="vd-popup-id font-monospace fw-bold">' + escapeHtml(obs.id) + '</span>' +
-                    '<span class="badge vd-badge-priority badge-' + (obs.priority || 'medium') + '">' + priorityLabel + ' (' + scoreText + ')</span>' +
+                '<span class="vd-popup-id font-monospace fw-bold">' + escapeHtml(obs.id) + '</span>' +
+                '<span class="badge vd-badge-priority badge-' + (obs.priority || 'medium') + '">' + priorityLabel + ' (' + scoreText + ')</span>' +
                 '</div>' +
                 '<div class="vd-popup-location fw-semibold text-dark mb-1">' + escapeHtml(obs.location || 'Nainital Beat') + '</div>' +
                 '<div class="vd-popup-meta small text-muted mb-2">' +
-                    '<div><i class="bi bi-geo-alt me-1"></i>' + lat.toFixed(4) + '° N, ' + lng.toFixed(4) + '° E</div>' +
-                    '<div><i class="bi bi-clock me-1"></i>' + escapeHtml(obs.detected_at || '') + '</div>' +
-                    '<div><i class="bi bi-satellite me-1"></i>' + escapeHtml(obs.source || 'VIIRS') + ' &bull; ' + confText + ' conf</div>' +
-                    '<div><i class="bi bi-fire me-1"></i>FRP: ' + frpText + ' &bull; Status: ' + escapeHtml(obs.status || 'new') + '</div>' +
-                    '<div class="mt-1"><span class="badge bg-light text-secondary border">' + natureTag + '</span></div>' +
+                '<div><i class="bi bi-geo-alt me-1"></i>' + lat.toFixed(4) + '° N, ' + lng.toFixed(4) + '° E</div>' +
+                '<div><i class="bi bi-clock me-1"></i>' + escapeHtml(obs.detected_at || '') + '</div>' +
+                '<div><i class="bi bi-satellite me-1"></i>' + escapeHtml(obs.source || 'VIIRS') + ' &bull; ' + confText + ' conf</div>' +
+                '<div><i class="bi bi-fire me-1"></i>FRP: ' + frpText + ' &bull; Status: ' + escapeHtml(obs.status || 'new') + '</div>' +
+                '<div class="mt-1"><span class="badge bg-light text-secondary border">' + natureTag + '</span></div>' +
                 '</div>' +
                 '<button type="button" class="btn btn-sm btn-success w-100 vd-popup-btn" data-obs-id="' + escapeHtml(obs.id) + '">' +
-                    '<i class="bi bi-card-text me-1"></i>Inspect Score &amp; Details' +
+                '<i class="bi bi-card-text me-1"></i>Inspect Score &amp; Details' +
                 '</button>' +
-            '</div>';
+                '</div>';
 
             marker.bindPopup(popupContent, { maxWidth: 280 });
 
@@ -812,18 +832,18 @@
         var breakdown = obs.score_breakdown || {};
         // Map score breakdown keys to explicit element ID suffixes for clarity and robustness
         var componentsList = [
-            { key: "confidence",        suffix: "Confidence", max: 30 },
-            { key: "repeat_detections", suffix: "Repeat",     max: 30 },
-            { key: "frp",               suffix: "Frp",        max: 15 },
-            { key: "recency",           suffix: "Recency",    max: 15 },
-            { key: "forest_overlap",    suffix: "Forest",     max: 10 },
+            { key: "confidence", suffix: "Confidence", max: 30 },
+            { key: "repeat_detections", suffix: "Repeat", max: 30 },
+            { key: "frp", suffix: "Frp", max: 15 },
+            { key: "recency", suffix: "Recency", max: 15 },
+            { key: "forest_overlap", suffix: "Forest", max: 10 },
         ];
 
         componentsList.forEach(function (c) {
             var data = breakdown[c.key] || {};
-            var scoreEl  = qs("#compScore"  + c.suffix);
-            var barEl    = qs("#compBar"    + c.suffix);
-            var explEl   = qs("#compExpl"   + c.suffix);
+            var scoreEl = qs("#compScore" + c.suffix);
+            var barEl = qs("#compBar" + c.suffix);
+            var explEl = qs("#compExpl" + c.suffix);
             var statusEl = qs("#compStatus" + c.suffix);
 
             var pts = data.score !== undefined ? data.score : 0;
@@ -1103,35 +1123,35 @@
 
             html += '<tr class="vd-table-row ' + (isSelected ? 'row-selected' : '') + '" data-id="' + escapeHtml(obs.id) + '" role="button" tabindex="0">' +
                 '<td class="font-monospace fw-semibold text-forest">' +
-                    '<span class="vd-id-badge">' + escapeHtml(obs.id) + '</span>' +
+                '<span class="vd-id-badge">' + escapeHtml(obs.id) + '</span>' +
                 '</td>' +
                 '<td class="text-nowrap">' +
-                    '<div class="vd-time-primary">' + formatDateDisplay(obs.detected_at_date || '') + '</div>' +
-                    '<div class="vd-time-secondary font-monospace">' + escapeHtml(obs.detected_at_time || '') + '</div>' +
+                '<div class="vd-time-primary">' + formatDateDisplay(obs.detected_at_date || '') + '</div>' +
+                '<div class="vd-time-secondary font-monospace">' + escapeHtml(obs.detected_at_time || '') + '</div>' +
                 '</td>' +
                 '<td>' +
-                    '<div class="fw-semibold text-dark">' + escapeHtml(obs.location || 'Nainital Beat') + '</div>' +
-                    '<div class="small text-muted"><i class="bi bi-pin-map me-1"></i>' + escapeHtml(obs.range || 'Nainital') + '</div>' +
+                '<div class="fw-semibold text-dark">' + escapeHtml(obs.location || 'Nainital Beat') + '</div>' +
+                '<div class="small text-muted"><i class="bi bi-pin-map me-1"></i>' + escapeHtml(obs.range || 'Nainital') + '</div>' +
                 '</td>' +
                 '<td>' +
-                    '<span class="vd-satellite-pill"><i class="bi bi-satellite me-1"></i>' + escapeHtml(obs.source || 'VIIRS') + '</span>' +
+                '<span class="vd-satellite-pill"><i class="bi bi-satellite me-1"></i>' + escapeHtml(obs.source || 'VIIRS') + '</span>' +
                 '</td>' +
                 '<td class="text-center font-monospace fw-semibold">' + confVal + '</td>' +
                 '<td class="text-center font-monospace">' + frpVal + '</td>' +
                 '<td class="text-center">' +
-                    '<div class="d-inline-flex flex-column align-items-center">' +
-                        '<span class="badge vd-badge-priority badge-' + p + ' mb-1">' + p.toUpperCase() + '</span>' +
-                        '<span class="small font-monospace text-muted">' + scoreVal + '/100</span>' +
-                    '</div>' +
+                '<div class="d-inline-flex flex-column align-items-center">' +
+                '<span class="badge vd-badge-priority badge-' + p + ' mb-1">' + p.toUpperCase() + '</span>' +
+                '<span class="small font-monospace text-muted">' + scoreVal + '/100</span>' +
+                '</div>' +
                 '</td>' +
                 '<td class="text-center">' + statusBadge + '</td>' +
                 '<td class="text-center">' + natureBadge + '</td>' +
                 '<td class="text-end">' +
-                    '<button type="button" class="btn btn-sm btn-outline-success vd-btn-view-details">' +
-                        '<i class="bi bi-eye me-1"></i>Details' +
-                    '</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-success vd-btn-view-details">' +
+                '<i class="bi bi-eye me-1"></i>Details' +
+                '</button>' +
                 '</td>' +
-            '</tr>';
+                '</tr>';
         });
 
         tbody.innerHTML = html;
