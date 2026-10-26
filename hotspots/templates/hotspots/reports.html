@@ -1,0 +1,220 @@
+{% extends 'hotspots/base.html' %}
+
+{% block title %}Alerts &amp; Reports | VanDrishti Forest Intelligence{% endblock %}
+
+{% block content %}
+<!-- Reports Page Header -->
+<div class="vd-dashboard-header animate-fade-in mb-3">
+    <div class="vd-header-main">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+            <span class="vd-pill-indicator">
+                <span class="vd-pulse-ring"></span>
+                <span class="vd-pulse-core"></span>
+            </span>
+            <span class="vd-caption-label">OPERATIONAL ALERT ESCALATION &bull; NAINITAL FOREST DIVISION</span>
+
+            <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle px-2 py-1">
+                <i class="bi bi-shield-exclamation me-1"></i>COMMAND DIRECTIVE
+            </span>
+        </div>
+        <h1 class="vd-page-heading">Alert Escalations &amp; Operational Reports</h1>
+        <p class="vd-page-subtext">
+            Incident review ledger, watchtower verification assignments, and downloadable situational reports for division forest officers and beat guards.
+        </p>
+    </div>
+    <div class="vd-header-actions d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+            <i class="bi bi-printer me-1"></i>Print Briefing
+        </button>
+        <a href="{% url 'api_export_report' %}" class="btn btn-forest btn-sm">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export CSV
+        </a>
+    </div>
+</div>
+
+<!-- Alert Escalation Summary KPIs -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="vd-kpi-card card-accent-terracotta">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">CRITICAL ALERTS</span>
+                <span class="vd-kpi-icon-wrap bg-terracotta-subtle"><i class="bi bi-fire text-critical"></i></span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value text-critical">{{ high_priority_count }}</div>
+                <p class="vd-kpi-caption">Score &ge; 70 &bull; Urgent Watchtower Check</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="vd-kpi-card card-accent-amber">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">MEDIUM ALERTS</span>
+                <span class="vd-kpi-icon-wrap bg-amber-subtle"><i class="bi bi-exclamation-circle text-warning-amber"></i></span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value text-warning-amber">{{ medium_priority_count }}</div>
+                <p class="vd-kpi-caption">Score 40–69 &bull; Scheduled Line-of-sight Check</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="vd-kpi-card card-accent-green">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">LOW ADVISORIES</span>
+                <span class="vd-kpi-icon-wrap bg-green-subtle"><i class="bi bi-shield-check text-forest"></i></span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value text-forest">{{ low_priority_count }}</div>
+                <p class="vd-kpi-caption">Score &lt; 40 &bull; Logged Background Signatures</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="vd-kpi-card card-accent-terracotta">
+            <div class="vd-kpi-header">
+                <span class="vd-kpi-label">RESPONSE CASES</span>
+                <span class="vd-kpi-icon-wrap bg-terracotta-subtle"><i class="bi bi-people text-critical"></i></span>
+            </div>
+            <div class="vd-kpi-body">
+                <div class="vd-kpi-value text-dark">{{ active_cases_count }}</div>
+                <p class="vd-kpi-caption">{{ response_cases_count }} total logged cases</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Response Cases Ledger -->
+<div class="vd-panel-card mb-4">
+    <div class="vd-panel-header d-flex justify-content-between align-items-center">
+        <span class="vd-panel-title">
+            <i class="bi bi-journal-medical me-2 text-forest"></i>Assigned Field Verification Ledger
+        </span>
+        <span class="badge vd-badge-live">{{ response_cases_count }} Cases</span>
+    </div>
+    <div class="vd-panel-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Case ID</th>
+                        <th>Location &amp; Range</th>
+                        <th>Assigned Team / Beat</th>
+                        <th class="text-center">Priority</th>
+                        <th class="text-center">Status</th>
+                        <th>Logged At</th>
+                        <th>Field Action Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for case in response_cases %}
+                    <tr>
+                        <td class="font-monospace fw-semibold text-forest">{{ case.case_id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ case.location_name }}</div>
+                            <div class="small text-muted">{{ case.forest_range }}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary-subtle text-secondary">
+                                <i class="bi bi-person-badge me-1"></i>{{ case.assigned_team|default:"Unassigned" }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge {% if case.priority == 'high' %}bg-danger-subtle text-danger-emphasis{% elif case.priority == 'medium' %}bg-warning-subtle text-warning-emphasis{% else %}bg-success-subtle text-success-emphasis{% endif %}">
+                                {{ case.get_priority_display }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge vd-status-badge status-{{ case.status }}">
+                                {{ case.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="font-monospace small text-muted">{{ case.created_at|date:"M d, Y · H:i" }}</td>
+                        <td class="small text-muted">{{ case.notes|default:"Awaiting watchtower confirmation." }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="bi bi-shield-check fs-2 text-success d-block mb-2"></i>
+                            <h6 class="fw-semibold">No Pending Field Response Cases</h6>
+                            <p class="small mb-0">All forest compartments in Nainital Division currently report normal operational status.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- High Priority Anomalies Escalation Queue -->
+<div class="vd-panel-card mb-4">
+    <div class="vd-panel-header d-flex justify-content-between align-items-center">
+        <span class="vd-panel-title">
+            <i class="bi bi-exclamation-triangle-fill me-2 text-critical"></i>High-Priority Thermal Anomaly Escalations (Score &ge; 70)
+        </span>
+        <span class="badge bg-danger-subtle text-danger-emphasis">{{ high_priority_count }} Alerts</span>
+    </div>
+    <div class="vd-panel-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Observation ID</th>
+                        <th>Detected Time</th>
+                        <th>Forest Landmark</th>
+                        <th>Sensor / Instrument</th>
+                        <th class="text-center">Confidence</th>
+                        <th class="text-center">Score</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obs in observations %}
+                    {% if obs.priority == 'high' %}
+                    <tr>
+                        <td class="font-monospace fw-bold text-forest">{{ obs.observation_id }}</td>
+                        <td class="text-nowrap font-monospace small">{{ obs.detected_at|date:"M d, Y · H:i UTC" }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ obs.location_name }}</div>
+                            <div class="small text-muted">{{ obs.forest_range }} ({{ obs.latitude|floatformat:4 }}°N, {{ obs.longitude|floatformat:4 }}°E)</div>
+                        </td>
+                        <td><span class="vd-satellite-pill small"><i class="bi bi-satellite me-1"></i>{{ obs.satellite_source }}</span></td>
+                        <td class="text-center font-monospace">{{ obs.confidence }}%</td>
+                        <td class="text-center">
+                            <span class="badge bg-danger text-white font-monospace">{{ obs.computed_score|floatformat:1 }}/100</span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge vd-status-badge status-{{ obs.status }}">{{ obs.get_status_display }}</span>
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'hotspots' %}" class="btn btn-sm btn-outline-forest">
+                                Inspect Registry <i class="bi bi-arrow-right ms-1"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-4 text-muted small">
+                            <i class="bi bi-check-circle me-1 text-success"></i>Zero high-priority thermal signatures logged.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Operational SOP & Protocol Box -->
+<div class="vd-advisory-banner" role="note">
+    <div class="vd-advisory-icon"><i class="bi bi-info-circle-fill"></i></div>
+    <div class="vd-advisory-text">
+        <strong>Division Reporting Protocol:</strong>
+        Observations exported via CSV include UTC timestamp, coordinates, calibrated Fire Radiative Power (MW), sensor confidence, and transparent 5-component priority weights. Use CSV data for beat watchtower dispatch and Divisional Forest Officer (DFO) morning situational briefings.
+    </div>
+    <div class="vd-advisory-tag">SOP Ref. VD-09</div>
+</div>
+{% endblock %}

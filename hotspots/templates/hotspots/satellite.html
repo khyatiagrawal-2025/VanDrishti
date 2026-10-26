@@ -1,0 +1,199 @@
+{% extends 'hotspots/base.html' %}
+
+{% block title %}Satellite Intelligence | VanDrishti Forest Intelligence{% endblock %}
+
+{% block content %}
+<!-- Satellite Page Header -->
+<div class="vd-dashboard-header animate-fade-in mb-3">
+    <div class="vd-header-main">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+            <span class="vd-pill-indicator">
+                <span class="vd-pulse-ring"></span>
+                <span class="vd-pulse-core"></span>
+            </span>
+            <span class="vd-caption-label">SPACEBORNE REMOTE SENSING &bull; NASA FIRMS &bull; VIIRS &bull; MODIS</span>
+
+            {% if data_mode == 'simulated' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1">
+                <i class="bi bi-flask me-1"></i>SIMULATED SATELLITE PASS
+            </span>
+            {% elif data_mode == 'historical' %}
+            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-2 py-1">
+                <i class="bi bi-clock-history me-1"></i>HISTORICAL FIRMS ARCHIVE
+            </span>
+            {% elif data_mode == 'real' %}
+            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle px-2 py-1">
+                <i class="bi bi-broadcast me-1"></i>LIVE FIRMS NRT STREAM
+            </span>
+            {% endif %}
+        </div>
+        <h1 class="vd-page-heading">Satellite Telemetry &amp; Spaceborne Intelligence</h1>
+        <p class="vd-page-subtext">
+            Radiometer telemetry ingested from polar-orbiting environmental satellites covering Nainital Forest Division (29.30°N–29.48°N, 79.35°E–79.61°E).
+        </p>
+    </div>
+    <div class="vd-header-actions d-flex align-items-center gap-2">
+        <div class="vd-station-card">
+            <div class="vd-station-icon"><i class="bi bi-satellite"></i></div>
+            <div class="vd-station-details">
+                <span class="vd-station-title">NASA FIRMS Ingestion</span>
+                <span class="vd-station-meta">VIIRS (375m) &bull; MODIS (1km)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Satellite Telemetry Status Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-md-3">
+        <div class="vd-panel-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-muted fw-semibold">INGESTION STATUS</span>
+                <span class="status-dot {% if is_connected %}status-dot-low{% else %}status-dot-high{% endif %}"></span>
+            </div>
+            <div class="h3 mb-1 fw-bold font-monospace text-forest">
+                {% if is_connected %}Active{% else %}Standby{% endif %}
+            </div>
+            <p class="small text-muted mb-0">
+                {% if last_sync_time %}Last pass: {{ last_sync_time|date:"M d, H:i UTC" }}{% else %}Awaiting sync pass{% endif %}
+            </p>
+        </div>
+    </div>
+    <div class="col-12 col-md-3">
+        <div class="vd-panel-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-muted fw-semibold">PEAK FIRE RADIATIVE POWER</span>
+                <i class="bi bi-fire text-critical"></i>
+            </div>
+            <div class="h3 mb-1 fw-bold font-monospace text-critical">
+                {% if peak_frp %}{{ peak_frp }} <span class="fs-6 text-muted">MW</span>{% else %}&ndash;{% endif %}
+            </div>
+            <p class="small text-muted mb-0">Peak radiant thermal energy recorded</p>
+        </div>
+    </div>
+    <div class="col-12 col-md-3">
+        <div class="vd-panel-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-muted fw-semibold">MEAN SENSOR CONFIDENCE</span>
+                <i class="bi bi-check2-circle text-emerald"></i>
+            </div>
+            <div class="h3 mb-1 fw-bold font-monospace text-emerald">
+                {% if avg_confidence %}{{ avg_confidence }}%{% else %}&ndash;{% endif %}
+            </div>
+            <p class="small text-muted mb-0">Spaceborne pixel confidence ratio</p>
+        </div>
+    </div>
+    <div class="col-12 col-md-3">
+        <div class="vd-panel-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-muted fw-semibold">DATA NATURE AUDIT</span>
+                <i class="bi bi-shield-check text-forest"></i>
+            </div>
+            <div class="h3 mb-1 fw-bold font-monospace text-forest">
+                {{ total_observations }} <span class="fs-6 text-muted">pts</span>
+            </div>
+            <p class="small text-muted mb-0">
+                {% if simulated_count > 0 %}{{ simulated_count }} Simulated{% endif %}
+                {% if historical_count > 0 %}{{ historical_count }} Historical{% endif %}
+                {% if real_count > 0 %}{{ real_count }} Live FIRMS{% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Detection Timeline Trends Chart -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-8">
+        <div class="vd-panel-card h-100">
+            <div class="vd-panel-header d-flex justify-content-between align-items-center">
+                <span class="vd-panel-title">
+                    <i class="bi bi-graph-up me-2 text-forest"></i>Observation Timeline &amp; Satellite Passes
+                </span>
+                <span class="badge vd-badge-subtle">Temporal Distribution</span>
+            </div>
+            <div class="vd-panel-body">
+                <p class="vd-caption-subtext mb-2">
+                    Daily detection volumes stratified by priority across satellite pass dates.
+                </p>
+                <div class="vd-chart-wrapper position-relative" style="min-height: 280px;">
+                    <canvas id="timelineChart" aria-label="Satellite acquisition timeline" role="img"></canvas>
+                    <div class="vd-chart-empty-state {% if total_observations > 0 %}d-none{% endif %}" id="timelineChartEmpty">
+                        <div class="vd-chart-empty-graphic"><i class="bi bi-bar-chart-line"></i></div>
+                        <p class="small text-muted mb-0">No timeline trends to display</p>
+                    </div>
+                </div>
+            </div>
+            <div class="vd-panel-footer small text-muted">
+                <i class="bi bi-info-circle me-1"></i>Thermal anomaly detections represent spaceborne radiometric observations, not confirmed fire events.
+            </div>
+        </div>
+    </div>
+
+    <!-- Sensor Platform Breakdown -->
+    <div class="col-12 col-lg-4">
+        <div class="vd-panel-card h-100">
+            <div class="vd-panel-header">
+                <span class="vd-panel-title">
+                    <i class="bi bi-layers-half me-2 text-forest"></i>Sensor Breakdown
+                </span>
+            </div>
+            <div class="vd-panel-body">
+                <p class="small text-muted mb-3">Satellite radiometers providing thermal anomaly observations:</p>
+                <div class="vd-sensor-list">
+                    {% for sensor, count in sensor_counts.items %}
+                    <div class="p-2 mb-2 rounded bg-light border d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="fw-semibold text-dark d-block"><i class="bi bi-satellite me-1 text-forest"></i>{{ sensor }}</span>
+                            <span class="small text-muted font-monospace">Coverage: Nainital Bounds</span>
+                        </div>
+                        <span class="badge bg-forest text-white font-monospace">{{ count }} pass{{ count|pluralize:"es" }}</span>
+                    </div>
+                    {% empty %}
+                    <div class="text-center py-4 text-muted small">No sensor records logged yet.</div>
+                    {% endfor %}
+                </div>
+
+                <div class="alert alert-light border small text-muted mt-3 mb-0 p-2">
+                    <i class="bi bi-shield-exclamation me-1 text-forest"></i>
+                    <strong>Resolution Specs:</strong>
+                    VIIRS (I-Band 375m) provides high spatial precision for mountain terrain. MODIS (1km) provides wide radiometric coverage.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Spaceborne Indicators Technical Reference -->
+<div class="vd-panel-card mb-4">
+    <div class="vd-panel-header">
+        <span class="vd-panel-title">
+            <i class="bi bi-card-checklist me-2 text-forest"></i>Supported Spaceborne Indicators
+        </span>
+    </div>
+    <div class="vd-panel-body">
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <div class="p-3 border rounded bg-light h-100">
+                    <h6 class="fw-bold text-forest mb-1"><i class="bi bi-fire me-1"></i>Fire Radiative Power (FRP)</h6>
+                    <p class="small text-muted mb-2">Measured in Megawatts (MW). Quantifies the instantaneous rate of radiant heat emitted by the thermal anomaly pixel.</p>
+                    <span class="badge bg-danger-subtle text-danger-emphasis">Higher FRP = Higher Thermal Intensity</span>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="p-3 border rounded bg-light h-100">
+                    <h6 class="fw-bold text-forest mb-1"><i class="bi bi-thermometer-half me-1"></i>Brightness Temp (Kelvin)</h6>
+                    <p class="small text-muted mb-2">Mid-infrared radiometric channel radiance (VIIRS I4 ~3.9 µm). Distinguishes high-temperature forest combustion from ground ambient.</p>
+                    <span class="badge bg-warning-subtle text-warning-emphasis">Calibrated Radiometric Temp</span>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="p-3 border rounded bg-light h-100">
+                    <h6 class="fw-bold text-forest mb-1"><i class="bi bi-percent me-1"></i>Detection Confidence</h6>
+                    <p class="small text-muted mb-2">Statistical confidence percentage (0–100%) indicating pixel quality, cloud freedom, sun glint rejection, and spectral reliability.</p>
+                    <span class="badge bg-success-subtle text-success-emphasis">Sensor Quality Metric</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

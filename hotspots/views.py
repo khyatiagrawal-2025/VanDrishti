@@ -9,11 +9,14 @@ from .models import Observation, ResponseCase, TelemetrySync
 from .scoring import calculate_priority_score
 
 
-def dashboard(request, active_page="dashboard"):
+import csv
+
+
+def get_surveillance_context(request, active_page="dashboard"):
     """
-    Renders the primary Forest Intelligence Dashboard for Nainital Forest Division.
-    Passes real/historical/simulated observation records, explainable priority score metrics,
-    and telemetry status from the database.
+    Builds the unified surveillance context for all VanDrishti portal pages.
+    Provides real/historical/simulated observation records, explainable priority score metrics,
+    response cases, sensor breakdowns, and telemetry status from the database.
     """
     observations_qs = Observation.objects.all().order_by("-detected_at")
     observations_list = list(observations_qs)
@@ -29,6 +32,7 @@ def dashboard(request, active_page="dashboard"):
     real_count = 0
     conf_values = []
     frp_values = []
+    sensor_counts = defaultdict(int)
 
     for obs in observations_list:
         if obs.priority == "high":
@@ -52,6 +56,13 @@ def dashboard(request, active_page="dashboard"):
             conf_values.append(obs.confidence)
         if obs.frp_mw is not None:
             frp_values.append(obs.frp_mw)
+
+        if obs.satellite_source:
+            sensor_counts[obs.satellite_source] += 1
+
+    # Response cases
+    response_cases_list = list(ResponseCase.objects.all().order_by("-created_at"))
+    active_cases_count = sum(1 for c in response_cases_list if c.status in ["new", "assigned", "under-review"])
 
     # Telemetry sync status
     telemetry = TelemetrySync.objects.first()
@@ -143,8 +154,12 @@ def dashboard(request, active_page="dashboard"):
             }
         )
 
-    context = {
+    # Distinct forest ranges in division
+    distinct_ranges = sorted(list(set(o.forest_range for o in observations_list if o.forest_range)))
+
+    return {
         "observations": observations_list,
+        "recent_observations": observations_list[:6],
         "observations_json": json.dumps(observations_json_payload),
         "total_observations": total_count,
         "high_priority_count": high_count,
@@ -159,20 +174,118 @@ def dashboard(request, active_page="dashboard"):
         "real_count": real_count,
         "timeline_json": json.dumps(timeline_data),
         "score_bins_json": json.dumps(score_bins),
+        "sensor_counts": dict(sensor_counts),
+        "response_cases": response_cases_list,
+        "response_cases_count": len(response_cases_list),
+        "active_cases_count": active_cases_count,
+        "distinct_ranges": distinct_ranges,
         "is_connected": is_connected,
         "last_sync_time": last_sync_time,
         "telemetry": telemetry,
         "active_page": active_page,
     }
+
+
+def dashboard(request, active_page="dashboard"):
+    """
+    Page A: Overview Dashboard.
+    Presents system health, real KPI summary, recent detections, interactive map preview,
+    priority stratification charts, and quick operational shortcuts.
+    """
+    context = get_surveillance_context(request, active_page="dashboard")
     return render(request, "hotspots/dashboard.html", context)
 
 
 def hotspots_cases(request):
     """
-    Cases and Hotspots view for /hotspots/ route.
-    Unified experience reusing the dashboard template with Hotspots nav item active.
+    Page B: Hotspots Explorer.
+    Dedicated listing with real-time search, multi-factor filtering, severity indicators,
+    tabular breakdown, and response case tracking.
     """
-    return dashboard(request, active_page="hotspots")
+    context = get_surveillance_context(request, active_page="hotspots")
+    return render(request, "hotspots/hotspots.html", context)
+
+
+def geospatial_map(request):
+    """
+    Page C: Geospatial Surveillance Map.
+    Full-viewport interactive Leaflet GIS workspace with Streets, Topo, and Satellite
+    basemaps, priority filter chips, division polygon, and anomaly markers.
+    """
+    context = get_surveillance_context(request, active_page="map")
+    return render(request, "hotspots/map.html", context)
+
+
+def satellite_intelligence(request):
+    """
+    Page D: Satellite Intelligence.
+    Satellite pass telemetry, spaceborne sensor indicators (VIIRS, MODIS),
+    temporal trends, FRP radiance analytics, and data provenance audit.
+    """
+    context = get_surveillance_context(request, active_page="satellite")
+    return render(request, "hotspots/satellite.html", context)
+
+
+def alerts_reports(request):
+    """
+    Page E: Alerts & Reports.
+    High-priority escalation ledger, watchtower review assignments,
+    active response cases, and CSV export for field crews.
+    """
+    context = get_surveillance_context(request, active_page="reports")
+    return render(request, "hotspots/reports.html", context)
+
+
+def api_export_report(request):
+    """
+    Generates and downloads a clean, structured CSV report of observations
+    and priority scores for forestry field personnel and division command.
+    """
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    filename = f"VanDrishti_Surveillance_Report_{timezone.now().strftime('%Y%m%d_%H%M')}.csv"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "Observation ID",
+        "Detection Time (UTC)",
+        "Location",
+        "Forest Range",
+        "Latitude",
+        "Longitude",
+        "Satellite Instrument",
+        "Confidence (%)",
+        "FRP (MW)",
+        "Brightness Temp (K)",
+        "Priority Tier",
+        "Priority Score (0-100)",
+        "Review Status",
+        "Data Nature",
+        "Field Notes",
+    ])
+
+    observations = list(Observation.objects.all().order_by("-detected_at"))
+    for obs in observations:
+        score_info = calculate_priority_score(obs, all_observations=observations)
+        writer.writerow([
+            obs.observation_id,
+            obs.detected_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            obs.location_name,
+            obs.forest_range,
+            obs.latitude,
+            obs.longitude,
+            obs.satellite_source,
+            obs.confidence if obs.confidence is not None else "",
+            obs.frp_mw if obs.frp_mw is not None else "",
+            obs.brightness_temp_k if obs.brightness_temp_k is not None else "",
+            obs.priority.upper(),
+            score_info["score"],
+            obs.status,
+            obs.data_nature,
+            obs.notes or "",
+        ])
+
+    return response
 
 
 @csrf_exempt

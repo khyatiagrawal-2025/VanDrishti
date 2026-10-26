@@ -26,6 +26,26 @@
 </head>
 <body class="vd-app-body">
 
+    <!-- VanDrishti System Preloader -->
+    <div class="vd-preloader" id="vdAppPreloader" aria-hidden="true">
+        <div class="vd-preloader-content">
+            <div class="vd-preloader-logo">
+                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" class="vd-preloader-svg">
+                    <circle cx="16" cy="16" r="14" stroke="#39A875" stroke-width="1.4" stroke-opacity="0.35" stroke-dasharray="3 3" class="vd-preloader-spin" />
+                    <circle cx="16" cy="16" r="9.5" stroke="#39A875" stroke-width="1.4" stroke-opacity="0.6" />
+                    <path d="M16 4L9 14H13L7 22H14.5V28H17.5V22H25L19 14H23L16 4Z" fill="#39A875" />
+                    <circle cx="23.5" cy="8.5" r="2.2" fill="#E8A33E" />
+                </svg>
+            </div>
+            <div class="vd-preloader-brand">VanDrishti</div>
+            <div class="vd-preloader-tagline">Forest Intelligence Command Center &bull; Nainital</div>
+            <div class="vd-preloader-status">
+                <span class="spinner-border spinner-border-sm text-forest me-2" role="status"></span>
+                <span id="vdPreloaderStatusText">Initializing geospatial telemetry...</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Mobile Navigation Overlay -->
     <div class="vd-overlay" id="vdOverlay" aria-hidden="true"></div>
 
@@ -33,7 +53,7 @@
     <aside class="vd-sidebar" id="vdSidebar" aria-label="Main Navigation">
         <!-- Brand Header -->
         <div class="vd-brand-wrap">
-            <a href="/" class="vd-brand" title="VanDrishti - Forest Intelligence Platform">
+            <a href="{% url 'dashboard' %}" class="vd-brand" title="VanDrishti - Forest Intelligence Platform">
                 <div class="vd-brand-logo">
                     <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" class="vd-logo-svg" aria-hidden="true">
                         <!-- Radar wave circles -->
@@ -58,28 +78,43 @@
 
         <!-- Navigation Links -->
         <nav class="vd-nav-menu">
-            <div class="vd-nav-section-label">MONITORING</div>
+            <div class="vd-nav-section-label">SURVEILLANCE</div>
             <ul class="vd-nav-list">
                 <li class="vd-nav-item">
-                    <a class="vd-nav-link {% if active_page == 'dashboard' or not active_page %}active{% endif %}" href="/" id="navLinkDashboard">
+                    <a class="vd-nav-link {% if active_page == 'dashboard' or not active_page %}active{% endif %}" href="{% url 'dashboard' %}" id="navLinkDashboard">
                         <span class="vd-nav-icon"><i class="bi bi-grid-1x2-fill"></i></span>
-                        <span class="vd-nav-label">Dashboard</span>
+                        <span class="vd-nav-label">Overview</span>
                         <span class="vd-nav-badge">Live</span>
                     </a>
                 </li>
                 <li class="vd-nav-item">
-                    <a class="vd-nav-link {% if active_page == 'hotspots' %}active{% endif %}" href="/hotspots/" id="navLinkHotspots">
+                    <a class="vd-nav-link {% if active_page == 'hotspots' %}active{% endif %}" href="{% url 'hotspots' %}" id="navLinkHotspots">
                         <span class="vd-nav-icon"><i class="bi bi-fire"></i></span>
-                        <span class="vd-nav-label">Hotspots &amp; Cases</span>
+                        <span class="vd-nav-label">Hotspots Explorer</span>
                         {% if high_priority_count %}
                         <span class="vd-nav-count-badge">{{ high_priority_count }}</span>
                         {% endif %}
                     </a>
                 </li>
                 <li class="vd-nav-item">
-                    <a class="vd-nav-link" href="#mapSection" id="navLinkMap">
+                    <a class="vd-nav-link {% if active_page == 'map' %}active{% endif %}" href="{% url 'map' %}" id="navLinkMap">
                         <span class="vd-nav-icon"><i class="bi bi-map-fill"></i></span>
-                        <span class="vd-nav-label">Observation Map</span>
+                        <span class="vd-nav-label">Geospatial Map</span>
+                    </a>
+                </li>
+                <li class="vd-nav-item">
+                    <a class="vd-nav-link {% if active_page == 'satellite' %}active{% endif %}" href="{% url 'satellite' %}" id="navLinkSatellite">
+                        <span class="vd-nav-icon"><i class="bi bi-broadcast-pin"></i></span>
+                        <span class="vd-nav-label">Satellite Telemetry</span>
+                    </a>
+                </li>
+                <li class="vd-nav-item">
+                    <a class="vd-nav-link {% if active_page == 'reports' %}active{% endif %}" href="{% url 'reports' %}" id="navLinkReports">
+                        <span class="vd-nav-icon"><i class="bi bi-shield-check"></i></span>
+                        <span class="vd-nav-label">Alerts &amp; Reports</span>
+                        {% if cases_under_review_count %}
+                        <span class="vd-nav-count-badge bg-warning-subtle text-warning-emphasis">{{ cases_under_review_count }}</span>
+                        {% endif %}
                     </a>
                 </li>
             </ul>
@@ -98,7 +133,7 @@
         <div class="vd-sidebar-footer">
             <div class="vd-footer-brand">
                 <span class="vd-division-tag">Nainital Forest Division</span>
-                <span class="vd-version-tag">Uttarakhand, India · v1.0 Ops</span>
+                <span class="vd-version-tag">Uttarakhand, India &bull; v2.0 Ops</span>
             </div>
         </div>
     </aside>
@@ -116,11 +151,23 @@
 
                 <!-- Breadcrumb & Workspace Info -->
                 <div class="vd-topbar-breadcrumb">
-                    <span class="vd-badge-division">
+                    <a href="{% url 'dashboard' %}" class="vd-badge-division text-decoration-none">
                         <i class="bi bi-shield-shaded me-1"></i>Nainital Forest Division
-                    </span>
+                    </a>
                     <span class="vd-breadcrumb-divider">/</span>
-                    <span class="vd-breadcrumb-page">Forest Intelligence Command</span>
+                    <span class="vd-breadcrumb-page">
+                        {% if active_page == 'hotspots' %}
+                            Hotspots Explorer &amp; Cases
+                        {% elif active_page == 'map' %}
+                            Geospatial Surveillance Center
+                        {% elif active_page == 'satellite' %}
+                            Satellite Telemetry &amp; Sensors
+                        {% elif active_page == 'reports' %}
+                            Alert Escalation &amp; Field Reports
+                        {% else %}
+                            Overview &amp; Command
+                        {% endif %}
+                    </span>
                 </div>
             </div>
 

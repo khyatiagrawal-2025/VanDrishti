@@ -103,25 +103,16 @@
             // Permitted, high-detail basemap providing real road names, highway labels, village settlements,
             // and topography relief in Nainital Division without 403 localhost rate-blocking
 
-            // 1. Street Map: OpenStreetMap tiles (no CARTO API key required)
+            // 1. Street Map: Esri World Street Map (high-detail roads & settlements, no 403 localhost blocking, no API key required)
             var osmLayer = L.tileLayer(
-                "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
                 {
                     attribution:
-                        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
-                    subdomains: "abc",
+                        'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &mdash; Sources: Esri, HERE, Garmin, USGS, DeLorme, OpenStreetMap contributors',
                     minZoom: 8,
                     maxZoom: 19,
                 }
             );
-
-
-            // 1b. Permitted Fallback Road Map: Esri World Street Map
-            var esriStreetLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
-                attribution: 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &bull; Source: Esri, USGS, DeLorme',
-                minZoom: 8,
-                maxZoom: 19,
-            });
 
             // 2. Topographic Map: OpenTopoMap with elevation shading, peaks and contour lines
             var topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
@@ -134,16 +125,15 @@
 
             // 3. High-Resolution Aerial Satellite Imagery: Esri World Imagery
             // Visualizing the mountain terrain, forest canopy, and pine slopes across Nainital Division
-
-            var osmLayer = L.tileLayer(
-                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+            var satelliteLayer = L.tileLayer(
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                 {
                     attribution:
-                        'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Sources: Esri, HERE, Garmin, OpenStreetMap contributors',
-                    maxZoom: 19
+                        'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+                    minZoom: 8,
+                    maxZoom: 19,
                 }
             );
-
 
             appState.basemapLayers = {
                 osm: osmLayer,
@@ -193,14 +183,6 @@
                     if (consecutiveTileErrors === 0) clearTileError();
                 });
             }
-
-            var satelliteLayer = L.tileLayer(
-                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                {
-                    attribution: 'Tiles &copy; Esri',
-                    maxZoom: 19
-                }
-            );
 
 
             attachTileErrorHandling(osmLayer, "OpenStreetMap");
@@ -296,7 +278,11 @@
 
             if (btnVoyager) {
                 btnVoyager.addEventListener("click", function () {
-                    switchBasemap(appState.basemapLayers.voyager, btnVoyager);
+                    if (appState.currentBasemap === appState.basemapLayers.voyager) {
+                        switchBasemap(appState.basemapLayers.osm, btnOSM);
+                    } else {
+                        switchBasemap(appState.basemapLayers.voyager, btnVoyager);
+                    }
                 });
             }
             if (btnTopo) {
@@ -328,6 +314,27 @@
                     });
                 });
             }
+
+            // Priority filter buttons (for dedicated map surveillance page)
+            qsa("[data-map-filter]").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var filterVal = btn.getAttribute("data-map-filter");
+                    qsa("[data-map-filter]").forEach(function (b) { b.classList.remove("active"); });
+                    btn.classList.add("active");
+                    if (filterVal === "all") {
+                        renderMapMarkers(appState.visibleObservations);
+                    } else {
+                        var filtered = appState.visibleObservations.filter(function (o) {
+                            return (o.priority || "").toLowerCase() === filterVal;
+                        });
+                        renderMapMarkers(filtered);
+                    }
+                });
+            });
+
+            setTimeout(function () {
+                if (appState.map) appState.map.invalidateSize();
+            }, 300);
 
             window.addEventListener("resize", function () {
                 if (appState.map) {
@@ -1385,6 +1392,19 @@
     }
 
     /* ----------------------------------------------------------------------
+       9. Application Preloader Dismissal
+       ---------------------------------------------------------------------- */
+    function dismissPreloader() {
+        var preloader = qs("#vdAppPreloader");
+        if (preloader && !preloader.classList.contains("preloader-done")) {
+            preloader.classList.add("preloader-done");
+            setTimeout(function () {
+                if (preloader.parentNode) preloader.parentNode.removeChild(preloader);
+            }, 450);
+        }
+    }
+
+    /* ----------------------------------------------------------------------
        Execution on DOM Ready
        ---------------------------------------------------------------------- */
     onReady(function () {
@@ -1397,5 +1417,9 @@
         initObservationDrawer();
         initTableInteractions();
         initTelemetrySync();
+        setTimeout(dismissPreloader, 300);
     });
+
+    window.addEventListener("load", dismissPreloader);
+    setTimeout(dismissPreloader, 1500);
 })();

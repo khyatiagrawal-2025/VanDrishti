@@ -1,0 +1,172 @@
+{% extends 'hotspots/base.html' %}
+
+{% block title %}Geospatial Map | VanDrishti Forest Intelligence{% endblock %}
+
+{% block content %}
+<!-- Map Page Header -->
+<div class="vd-dashboard-header animate-fade-in mb-3">
+    <div class="vd-header-main">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+            <span class="vd-pill-indicator">
+                <span class="vd-pulse-ring"></span>
+                <span class="vd-pulse-core"></span>
+            </span>
+            <span class="vd-caption-label">GEOSPATIAL SURVEILLANCE &bull; NAINITAL FOREST DIVISION</span>
+
+            <span class="badge bg-forest text-white px-2 py-1">
+                <i class="bi bi-geo-alt me-1"></i>29.3803° N, 79.4636° E
+            </span>
+        </div>
+        <h1 class="vd-page-heading">Geospatial Surveillance Center</h1>
+        <p class="vd-page-subtext">
+            Full-view interactive surveillance map rendering spaceborne thermal anomalies, division administrative boundary, and tri-basemap overlays (Streets, Topo, Satellite).
+        </p>
+    </div>
+    <div class="vd-header-actions d-flex align-items-center gap-2">
+        <div class="vd-sync-status-pill {% if is_connected %}vd-sync-live{% else %}vd-sync-disconnected{% endif %}">
+            <span class="vd-status-pulse-dot"></span>
+            <span>{% if is_connected %}Telemetry Active{% else %}Data Inactive{% endif %}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Centerpiece Full-Bleed Map Container -->
+<div class="vd-panel-card mb-4" id="mapSurveillanceCard">
+    <div class="vd-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
+        <!-- Map Title & Filter Chips -->
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="vd-panel-title">
+                <i class="bi bi-compass me-2 text-forest"></i>Division Surveillance Map
+            </span>
+            <span class="badge vd-badge-live" id="mapAnomalyCountBadge">
+                {{ total_observations }} Anomaly Marker{% if total_observations != 1 %}s{% endif %}
+            </span>
+            <div class="btn-group btn-group-sm ms-2" role="group" aria-label="Priority Map Filter">
+                <button type="button" class="btn btn-sm btn-outline-secondary active" data-map-filter="all">All</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" data-map-filter="high">High ({{ high_priority_count }})</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" data-map-filter="medium">Medium ({{ medium_priority_count }})</button>
+                <button type="button" class="btn btn-sm btn-outline-success" data-map-filter="low">Low ({{ low_priority_count }})</button>
+            </div>
+        </div>
+
+        <!-- Map Actions & Layer Controls -->
+        <div class="vd-map-controls-group d-flex align-items-center gap-1">
+            <button type="button" class="btn btn-sm btn-outline-secondary vd-map-btn" id="btnFitBounds" title="Fit view to show all visible hotspots">
+                <i class="bi bi-fullscreen me-1"></i>Fit Bounds
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary vd-map-btn" id="btnResetMapView" title="Reset map view to Nainital Center">
+                <i class="bi bi-arrows-fullscreen me-1"></i>Reset View
+            </button>
+            <!-- Tri-Basemap Switcher -->
+            <div class="btn-group btn-group-sm ms-1" role="group" aria-label="Map Basemap Switcher">
+                <button type="button" class="btn btn-outline-secondary active" id="btnLayerOSM" title="High-detail Road &amp; Settlement Map (CARTO Voyager / OSM)">Streets</button>
+                <button type="button" class="btn btn-outline-secondary" id="btnLayerTopo" title="Topographic Elevation Map">Topo</button>
+                <button type="button" class="btn btn-outline-secondary" id="btnLayerVoyager" title="Satellite Aerial Imagery">Satellite</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="vd-panel-body p-0 position-relative">
+        <!-- Interactive Leaflet Map Mount Point (Expanded Viewport) -->
+        <div id="dashboardMap" class="vd-leaflet-map-container" style="min-height: 680px; width: 100%;">
+            <!-- Fallback while tiles load -->
+            <div class="vd-map-loading" id="mapLoadingSpinner">
+                <div class="spinner-border text-forest spinner-border-sm me-2" role="status"></div>
+                <span>Initializing geospatial surveillance layers...</span>
+            </div>
+        </div>
+
+        <!-- Floating Coordinates HUD -->
+        <div class="vd-map-coords-hud" id="mapCoordsHud">
+            <i class="bi bi-cursor-fill me-1"></i>
+            <span id="mapCoordsText">29.3803° N, 79.4636° E &bull; Nainital Division</span>
+        </div>
+
+        <!-- Floating Map Legend -->
+        <div class="vd-map-legend" id="mapLegend">
+            <div class="vd-legend-title">Observation Priority</div>
+            <div class="vd-legend-item">
+                <span class="vd-legend-dot dot-critical"></span>
+                <span>High Priority (&ge;70)</span>
+            </div>
+            <div class="vd-legend-item">
+                <span class="vd-legend-dot dot-amber"></span>
+                <span>Medium Priority (40-69)</span>
+            </div>
+            <div class="vd-legend-item">
+                <span class="vd-legend-dot dot-emerald"></span>
+                <span>Low Priority (&lt;40)</span>
+            </div>
+            <div class="vd-legend-divider"></div>
+            <div class="vd-legend-item">
+                <span class="vd-legend-boundary"></span>
+                <span>Division Boundary</span>
+            </div>
+        </div>
+
+        <!-- Basemap Tile Error Notification Banner -->
+        <div class="vd-tile-error-banner d-none" id="mapTileErrorBanner" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <span id="mapTileErrorText">Basemap tiles could not be loaded. Please check your network connection.</span>
+            <button type="button" class="btn btn-sm btn-outline-light ms-2 py-0 px-2" id="btnSwitchBackupLayer">Switch Layer</button>
+        </div>
+
+        <!-- Empty State Overlay on Map -->
+        <div class="vd-map-empty-overlay {% if total_observations > 0 %}d-none{% endif %}" id="mapEmptyOverlay">
+            <div class="vd-empty-box">
+                <div class="vd-empty-icon"><i class="bi bi-shield-check"></i></div>
+                <div>
+                    <h5 class="mb-0">No Active Thermal Anomalies</h5>
+                    <p class="text-muted small mb-0" id="mapEmptyMessage">
+                        Zero thermal anomalies recorded for Nainital Forest Division. Basemap remains operational.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="vd-panel-footer d-flex flex-wrap justify-content-between align-items-center py-2 px-3">
+        <span class="small text-muted">
+            <i class="bi bi-info-circle me-1"></i>Click any pulse marker to inspect priority breakdown, coordinates, and beat dispatch details.
+        </span>
+        <span class="vd-footer-coords font-monospace small">Kumaon Circle &bull; Nainital Division Bounds (29.30°N–29.48°N, 79.35°E–79.61°E)</span>
+    </div>
+</div>
+
+<!-- Map Quick Intelligence Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-md-4">
+        <div class="vd-panel-card p-3 h-100">
+            <h6 class="fw-bold mb-1 text-forest"><i class="bi bi-layers me-2"></i>Basemap Layers</h6>
+            <p class="small text-muted mb-2">Toggle between 3 high-detail raster layers without API limits:</p>
+            <ul class="small list-unstyled mb-0 text-secondary">
+                <li class="mb-1"><strong class="text-dark">Streets:</strong> Esri World Street Map with roads and villages.</li>
+                <li class="mb-1"><strong class="text-dark">Topo:</strong> OpenTopoMap with contour shading and peaks.</li>
+                <li><strong class="text-dark">Satellite:</strong> Esri World Imagery with mountain forest canopy.</li>
+            </ul>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="vd-panel-card p-3 h-100">
+            <h6 class="fw-bold mb-1 text-forest"><i class="bi bi-geo me-2"></i>Forest Compartments</h6>
+            <p class="small text-muted mb-2">Distinct forest ranges currently covered by surveillance:</p>
+            <div class="d-flex flex-wrap gap-1">
+                {% for r in distinct_ranges %}
+                <span class="badge bg-secondary-subtle text-secondary small">{{ r }}</span>
+                {% empty %}
+                <span class="badge bg-secondary-subtle text-secondary small">Nainital Range</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="vd-panel-card p-3 h-100">
+            <h6 class="fw-bold mb-1 text-forest"><i class="bi bi-shield-lock me-2"></i>Field Dispatch</h6>
+            <p class="small text-muted mb-2">Thermal anomalies require line-of-sight confirmation before fire crew deployment.</p>
+            <a href="{% url 'hotspots' %}" class="btn btn-sm btn-outline-forest">
+                <i class="bi bi-list-check me-1"></i>Manage Hotspot Registry
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,369 @@
+{% extends 'hotspots/base.html' %}
+
+{% block title %}Hotspots Explorer | VanDrishti Forest Intelligence{% endblock %}
+
+{% block content %}
+<!-- Hotspots Explorer Page Header -->
+<div class="vd-dashboard-header animate-fade-in">
+    <div class="vd-header-main">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+            <span class="vd-pill-indicator">
+                <span class="vd-pulse-ring"></span>
+                <span class="vd-pulse-core"></span>
+            </span>
+            <span class="vd-caption-label">THERMAL ANOMALY REGISTRY &bull; NAINITAL DIVISION</span>
+
+            {% if data_mode == 'simulated' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1">
+                <i class="bi bi-flask me-1"></i>SIMULATED BENCHMARK DATASET
+            </span>
+            {% elif data_mode == 'historical' %}
+            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-2 py-1">
+                <i class="bi bi-clock-history me-1"></i>HISTORICAL ARCHIVE
+            </span>
+            {% elif data_mode == 'real' %}
+            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle px-2 py-1">
+                <i class="bi bi-broadcast me-1"></i>LIVE FIRMS TELEMETRY
+            </span>
+            {% endif %}
+        </div>
+        <h1 class="vd-page-heading">Hotspots Explorer &amp; Case Registry</h1>
+        <p class="vd-page-subtext">
+            Searchable registry of detected infrared anomalies across Nainital Division. Click any row to view explainable priority score breakdown, sensor telemetry, and dispatch guidance.
+        </p>
+    </div>
+    <div class="vd-header-actions d-flex align-items-center gap-2">
+        <a href="{% url 'map' %}" class="btn btn-outline-forest btn-sm">
+            <i class="bi bi-map me-1"></i>View on Map
+        </a>
+        <a href="{% url 'api_export_report' %}" class="btn btn-forest btn-sm">
+            <i class="bi bi-download me-1"></i>Export CSV
+        </a>
+    </div>
+</div>
+
+<!-- Explorer Quick Metric Badges -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="vd-mini-stat-card">
+            <div class="vd-mini-stat-label">TOTAL ANOMALIES</div>
+            <div class="vd-mini-stat-value text-forest">{{ total_observations }}</div>
+            <div class="vd-mini-stat-meta">In Nainital Division</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="vd-mini-stat-card">
+            <div class="vd-mini-stat-label">HIGH PRIORITY</div>
+            <div class="vd-mini-stat-value text-critical">{{ high_priority_count }}</div>
+            <div class="vd-mini-stat-meta">Score &ge; 70 &bull; Fast Action</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="vd-mini-stat-card">
+            <div class="vd-mini-stat-label">FIELD CASES</div>
+            <div class="vd-mini-stat-value text-amber">{{ cases_under_review_count }}</div>
+            <div class="vd-mini-stat-meta">Under Beat Verification</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="vd-mini-stat-card">
+            <div class="vd-mini-stat-label">MEAN CONFIDENCE</div>
+            <div class="vd-mini-stat-value text-emerald">{% if avg_confidence %}{{ avg_confidence }}%{% else %}&ndash;{% endif %}</div>
+            <div class="vd-mini-stat-meta">Spaceborne Radiometer</div>
+        </div>
+    </div>
+</div>
+
+<!-- Observations Registry & Filter Section -->
+<div class="vd-panel-card mb-4" id="explorerRegistryPanel">
+    <div class="vd-panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="vd-panel-title">
+                <i class="bi bi-table me-2 text-forest"></i>Hotspots Registry
+            </span>
+            <span class="badge vd-badge-live" id="tableRecordCountBadge">
+                {{ total_observations }} Record{% if total_observations != 1 %}s{% endif %}
+            </span>
+            <span class="badge bg-secondary-subtle text-secondary small d-none" id="tableFilteredBadge">
+                Filtered
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted d-none d-md-inline">Click any row for explainable score analysis</span>
+        </div>
+    </div>
+
+    <div class="vd-panel-body p-0">
+        <!-- Filter Toolbar -->
+        <form class="vd-filter-toolbar" id="dashboardFilterForm" onsubmit="return false;" aria-label="Filter observations">
+            <div class="row g-2 align-items-end">
+                <!-- Search Input -->
+                <div class="col-12 col-md-3">
+                    <label for="dashboardSearch" class="form-label vd-field-label">Search Registry</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="search" id="dashboardSearch" class="form-control border-start-0 ps-0"
+                               placeholder="ID, landmark, or forest range..." autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- Priority Filter Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterPriority" class="form-label vd-field-label">Priority</label>
+                    <select id="filterPriority" class="form-select" data-vd-filter="priority">
+                        <option value="all" selected>All Priorities</option>
+                        <option value="high">High (&ge;70)</option>
+                        <option value="medium">Medium (40-69)</option>
+                        <option value="low">Low (&lt;40)</option>
+                    </select>
+                </div>
+
+                <!-- Review Status Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterStatus" class="form-label vd-field-label">Review Status</label>
+                    <select id="filterStatus" class="form-select" data-vd-filter="status">
+                        <option value="all" selected>All Statuses</option>
+                        <option value="new">New</option>
+                        <option value="under-review">Under Review</option>
+                        <option value="verified">Verified</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                </div>
+
+                <!-- Confidence Filter Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterConfidence" class="form-label vd-field-label">Confidence</label>
+                    <select id="filterConfidence" class="form-select" data-vd-filter="confidence">
+                        <option value="all" selected>All Levels</option>
+                        <option value="high">High (&ge;80%)</option>
+                        <option value="moderate">Moderate (50-79%)</option>
+                        <option value="low">Low (&lt;50%)</option>
+                    </select>
+                </div>
+
+                <!-- Date Range Dropdown -->
+                <div class="col-6 col-md-2">
+                    <label for="filterDate" class="form-label vd-field-label">Time Window</label>
+                    <select id="filterDate" class="form-select" data-vd-filter="date-range">
+                        <option value="all" selected>All Time</option>
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d">Last 30 Days</option>
+                    </select>
+                </div>
+
+                <!-- Reset Filters Button -->
+                <div class="col-12 col-md-1">
+                    <button type="button" id="dashboardFilterReset" class="btn btn-outline-secondary w-100 vd-btn-reset" title="Reset all filters">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                        <span class="d-md-none ms-1">Reset</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Observations Data Table -->
+        <div class="table-responsive vd-table-responsive">
+            <table class="table table-hover align-middle vd-data-table mb-0" id="observationsTable" data-vd-table>
+                <thead>
+                    <tr>
+                        <th scope="col" class="sortable" data-sort="id">Observation ID <i class="bi bi-arrow-down-up ms-1"></i></th>
+                        <th scope="col" class="sortable" data-sort="date">Detected (UTC) <i class="bi bi-arrow-down-up ms-1"></i></th>
+                        <th scope="col">Location &amp; Range</th>
+                        <th scope="col">Sensor Instrument</th>
+                        <th scope="col" class="sortable text-center" data-sort="confidence">Confidence <i class="bi bi-arrow-down-up ms-1"></i></th>
+                        <th scope="col" class="sortable text-center" data-sort="frp">FRP (MW) <i class="bi bi-arrow-down-up ms-1"></i></th>
+                        <th scope="col" class="sortable text-center" data-sort="score">Priority Score <i class="bi bi-arrow-down-up ms-1"></i></th>
+                        <th scope="col" class="text-center">Status</th>
+                        <th scope="col" class="text-center">Dataset</th>
+                        <th scope="col" class="text-end">Detail</th>
+                    </tr>
+                </thead>
+                <tbody id="observationsTableBody">
+                    {% for obs in observations %}
+                    <tr class="vd-table-row"
+                        data-vd-item
+                        data-id="{{ obs.observation_id }}"
+                        data-priority="{{ obs.priority }}"
+                        data-status="{{ obs.status }}"
+                        data-nature="{{ obs.data_nature }}"
+                        data-date="{{ obs.detected_at|date:'c' }}"
+                        data-lat="{{ obs.latitude }}"
+                        data-lng="{{ obs.longitude }}"
+                        data-location="{{ obs.location_name }}"
+                        data-range="{{ obs.forest_range }}"
+                        data-source="{{ obs.satellite_source }}"
+                        data-confidence="{{ obs.confidence|default:0 }}"
+                        data-temp="{{ obs.brightness_temp_k|default:'' }}"
+                        data-frp="{{ obs.frp_mw|default:0 }}"
+                        data-score="{{ obs.computed_score|default:0 }}"
+                        data-notes="{{ obs.notes }}"
+                        tabindex="0"
+                        role="button"
+                        aria-label="View observation {{ obs.observation_id }}">
+                        
+                        <td class="font-monospace fw-semibold text-forest">
+                            <span class="vd-id-badge">{{ obs.observation_id }}</span>
+                        </td>
+                        <td class="text-nowrap">
+                            <div class="vd-time-primary">{{ obs.detected_at|date:"M d, Y" }}</div>
+                            <div class="vd-time-secondary font-monospace">{{ obs.detected_at|date:"H:i" }} UTC</div>
+                        </td>
+                        <td>
+                            <div class="fw-semibold text-dark">{{ obs.location_name }}</div>
+                            <div class="small text-muted"><i class="bi bi-pin-map me-1"></i>{{ obs.forest_range }}</div>
+                        </td>
+                        <td>
+                            <span class="vd-satellite-pill">
+                                <i class="bi bi-satellite me-1"></i>{{ obs.satellite_source }}
+                            </span>
+                        </td>
+                        <td class="text-center font-monospace fw-semibold">
+                            {% if obs.confidence %}{{ obs.confidence }}%{% else %}&ndash;{% endif %}
+                        </td>
+                        <td class="text-center font-monospace">
+                            {% if obs.frp_mw %}{{ obs.frp_mw }} MW{% else %}&ndash;{% endif %}
+                        </td>
+                        <td class="text-center">
+                            <div class="vd-score-cell">
+                                <span class="vd-score-num fw-bold font-monospace {% if obs.computed_score >= 70 %}text-critical{% elif obs.computed_score >= 40 %}text-warning-amber{% else %}text-emerald{% endif %}">
+                                    {{ obs.computed_score|floatformat:1 }}
+                                </span>
+                                <span class="vd-score-label small text-muted">/100</span>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge vd-status-badge status-{{ obs.status }}">
+                                {{ obs.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge vd-nature-badge nature-{{ obs.data_nature }}">
+                                {{ obs.get_data_nature_display }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-forest vd-btn-table-action"
+                                    data-open-drawer="{{ obs.observation_id }}"
+                                    title="Open Explainable Score Drawer">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5">
+                            <div class="vd-empty-box mx-auto" style="max-width: 440px;">
+                                <div class="vd-empty-icon text-muted mb-2"><i class="bi bi-inbox fs-1"></i></div>
+                                <h5>No Observations Found</h5>
+                                <p class="text-muted small">No thermal anomaly records match your query or dataset is empty.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Table Empty State Overlay (Filtered) -->
+        <div class="vd-table-empty-overlay d-none" id="tableEmptyState">
+            <div class="vd-empty-box">
+                <div class="vd-empty-icon"><i class="bi bi-filter-circle"></i></div>
+                <div>
+                    <h5 class="mb-1">No Matching Hotspots</h5>
+                    <p class="text-muted small mb-2">No observations match your current filter parameters.</p>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="emptyStateResetBtn">
+                        Clear All Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="vd-table-footer d-flex flex-wrap justify-content-between align-items-center p-3 border-top">
+            <div class="vd-pagination-info small text-muted mb-2 mb-sm-0" id="paginationInfo">
+                Showing observations
+            </div>
+            <nav class="vd-pagination-nav" aria-label="Table pagination">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item" id="pagePrev">
+                        <button class="page-link" type="button" aria-label="Previous page">
+                            <i class="bi bi-chevron-left me-1"></i>Previous
+                        </button>
+                    </li>
+                    <li class="page-item disabled" id="pageCurrentItem">
+                        <span class="page-link font-monospace" id="pageCurrentLabel">Page 1</span>
+                    </li>
+                    <li class="page-item" id="pageNext">
+                        <button class="page-link" type="button" aria-label="Next page">
+                            Next<i class="bi bi-chevron-right ms-1"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- Active Response Cases Section -->
+<div class="vd-panel-card mb-4" id="responseCasesPanel">
+    <div class="vd-panel-header d-flex justify-content-between align-items-center">
+        <span class="vd-panel-title">
+            <i class="bi bi-shield-check me-2 text-forest"></i>Field Verification Response Cases
+        </span>
+        <span class="badge vd-badge-subtle">{{ response_cases_count }} Cases Logged</span>
+    </div>
+    <div class="vd-panel-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Case ID</th>
+                        <th scope="col">Location &amp; Range</th>
+                        <th scope="col">Assigned Beat Squad</th>
+                        <th scope="col" class="text-center">Priority</th>
+                        <th scope="col" class="text-center">Workflow Status</th>
+                        <th scope="col">Logged Timestamp</th>
+                        <th scope="col">Field Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for case in response_cases %}
+                    <tr>
+                        <td class="font-monospace fw-semibold text-forest">{{ case.case_id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ case.location_name }}</div>
+                            <div class="small text-muted">{{ case.forest_range }}</div>
+                        </td>
+                        <td>
+                            <i class="bi bi-people me-1 text-muted"></i>
+                            {% if case.assigned_team %}{{ case.assigned_team }}{% else %}Awaiting Beat Assignment{% endif %}
+                        </td>
+                        <td class="text-center">
+                            <span class="badge {% if case.priority == 'high' %}bg-danger-subtle text-danger-emphasis{% elif case.priority == 'medium' %}bg-warning-subtle text-warning-emphasis{% else %}bg-success-subtle text-success-emphasis{% endif %}">
+                                {{ case.get_priority_display }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge vd-status-badge status-{{ case.status }}">
+                                {{ case.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="font-monospace small text-muted">{{ case.created_at|date:"M d, Y · H:i" }}</td>
+                        <td class="small text-muted">{{ case.notes|default:"Line-of-sight verification active." }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted small">
+                            <i class="bi bi-check-circle me-1 text-success"></i>No pending operational response cases logged for Nainital Division.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

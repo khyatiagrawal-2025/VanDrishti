@@ -414,6 +414,30 @@ class HotspotsCasesViewTest(TestCase):
         response = self.client.get(reverse("hotspots"))
         self.assertEqual(response.status_code, 200)
 
+    def test_geospatial_map_route(self):
+        response = self.client.get(reverse("map"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="dashboardMap"')
+        self.assertContains(response, 'id="btnLayerOSM"')
+        self.assertContains(response, 'id="btnLayerTopo"')
+        self.assertContains(response, 'id="btnLayerVoyager"')
+
+    def test_satellite_route(self):
+        response = self.client.get(reverse("satellite"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="timelineChart"')
+
+    def test_reports_route(self):
+        response = self.client.get(reverse("reports"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Alert Escalations")
+
+    def test_export_report_csv(self):
+        response = self.client.get(reverse("api_export_report"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("Observation ID", response.content.decode("utf-8"))
+
 
 class ApiEndpointsTest(TestCase):
     def setUp(self):

@@ -203,6 +203,58 @@
 
 </div>
 
+<!-- Surveillance Quick Command Hub -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <a href="{% url 'hotspots' %}" class="vd-nav-portal-card text-decoration-none">
+            <div class="d-flex align-items-center gap-3">
+                <div class="vd-portal-icon bg-terracotta-subtle text-critical"><i class="bi bi-fire"></i></div>
+                <div>
+                    <h6 class="mb-0 fw-bold text-dark">Hotspots Explorer</h6>
+                    <span class="small text-muted">Registry &amp; Filter {{ total_observations }} Anomali{{ total_observations|pluralize:"y,es" }}</span>
+                </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'map' %}" class="vd-nav-portal-card text-decoration-none">
+            <div class="d-flex align-items-center gap-3">
+                <div class="vd-portal-icon bg-green-subtle text-forest"><i class="bi bi-map-fill"></i></div>
+                <div>
+                    <h6 class="mb-0 fw-bold text-dark">Geospatial Map</h6>
+                    <span class="small text-muted">Full GIS Surveillance</span>
+                </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'satellite' %}" class="vd-nav-portal-card text-decoration-none">
+            <div class="d-flex align-items-center gap-3">
+                <div class="vd-portal-icon bg-amber-subtle text-warning-amber"><i class="bi bi-broadcast-pin"></i></div>
+                <div>
+                    <h6 class="mb-0 fw-bold text-dark">Satellite Telemetry</h6>
+                    <span class="small text-muted">VIIRS / MODIS Passes</span>
+                </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'reports' %}" class="vd-nav-portal-card text-decoration-none">
+            <div class="d-flex align-items-center gap-3">
+                <div class="vd-portal-icon bg-forest-soft text-forest"><i class="bi bi-shield-check"></i></div>
+                <div>
+                    <h6 class="mb-0 fw-bold text-dark">Alerts &amp; Reports</h6>
+                    <span class="small text-muted">{{ active_cases_count }} Cases &bull; Export CSV</span>
+                </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+        </a>
+    </div>
+</div>
+
 <!-- Centerpiece Map Section -->
 <div class="row g-3 mb-4" id="mapSection">
 

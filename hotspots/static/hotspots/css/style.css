@@ -1792,3 +1792,181 @@ body.vd-sidebar-collapsed .vd-sidebar-collapse-btn i {
     color: var(--vd-forest) !important;
     border: 1px solid var(--vd-emerald-border);
 }
+
+/* --------------------------------------------------------------------------
+   VanDrishti Branded Preloader Overlay
+   -------------------------------------------------------------------------- */
+.vd-preloader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: #102F24;
+    background-image: radial-gradient(circle at 50% 40%, rgba(57, 168, 117, 0.12) 0%, transparent 65%);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.4s ease-out, visibility 0.4s ease-out;
+    opacity: 1;
+    visibility: visible;
+}
+
+.vd-preloader.preloader-done {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.vd-preloader-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    color: #FFFFFF;
+}
+
+.vd-preloader-logo {
+    width: 64px;
+    height: 64px;
+    background: rgba(57, 168, 117, 0.12);
+    border: 1px solid rgba(57, 168, 117, 0.4);
+    border-radius: var(--vd-radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 0 24px rgba(57, 168, 117, 0.25);
+}
+
+.vd-preloader-svg {
+    width: 44px;
+    height: 44px;
+}
+
+.vd-preloader-spin {
+    animation: preloaderRadarSpin 3s linear infinite;
+    transform-origin: 16px 16px;
+}
+
+@keyframes preloaderRadarSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.vd-preloader-brand {
+    font-size: 1.65rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #FFFFFF;
+    margin-bottom: 0.25rem;
+}
+
+.vd-preloader-tagline {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--vd-emerald);
+    margin-bottom: 1.5rem;
+}
+
+.vd-preloader-status {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--vd-radius-full);
+    padding: 0.45rem 1rem;
+    font-size: 0.825rem;
+    color: #D3DFCE;
+}
+
+/* --------------------------------------------------------------------------
+   Quick Command Portal Cards (Overview Dashboard)
+   -------------------------------------------------------------------------- */
+.vd-nav-portal-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.15rem;
+    background: var(--vd-surface);
+    border: 1px solid var(--vd-sage-border);
+    border-radius: var(--vd-radius-md);
+    box-shadow: var(--vd-shadow-xs);
+    transition: transform var(--vd-transition-base), box-shadow var(--vd-transition-base), border-color var(--vd-transition-base);
+}
+
+.vd-nav-portal-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--vd-emerald);
+    box-shadow: var(--vd-shadow-md);
+}
+
+.vd-portal-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--vd-radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Mini Stat Cards (Hotspots Explorer)
+   -------------------------------------------------------------------------- */
+.vd-mini-stat-card {
+    background: var(--vd-surface);
+    border: 1px solid var(--vd-sage-border);
+    border-radius: var(--vd-radius-md);
+    padding: 1rem 1.15rem;
+    box-shadow: var(--vd-shadow-xs);
+}
+
+.vd-mini-stat-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--vd-text-secondary);
+    margin-bottom: 0.35rem;
+}
+
+.vd-mini-stat-value {
+    font-size: 1.65rem;
+    font-weight: 800;
+    line-height: 1.2;
+    font-family: var(--vd-font-mono);
+}
+
+.vd-mini-stat-meta {
+    font-size: 0.775rem;
+    color: var(--vd-text-secondary);
+    margin-top: 0.25rem;
+}
+
+/* Buttons */
+.btn-forest {
+    background-color: var(--vd-forest);
+    border-color: var(--vd-forest);
+    color: #FFFFFF;
+}
+
+.btn-forest:hover {
+    background-color: var(--vd-deep-forest);
+    border-color: var(--vd-deep-forest);
+    color: #FFFFFF;
+}
+
+.btn-outline-forest {
+    color: var(--vd-forest);
+    border-color: var(--vd-forest);
+}
+
+.btn-outline-forest:hover {
+    background-color: var(--vd-forest);
+    color: #FFFFFF;
+}
